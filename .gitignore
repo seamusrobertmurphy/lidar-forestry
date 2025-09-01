@@ -2,3 +2,13 @@
 .Rhistory
 .RData
 .Ruserdata
+.DS_Store
+
+*.tif
+*.html
+*.zip
+
+Scripts_Working/
+Data/
+app/
+/.quarto/

@@ -1,0 +1,20 @@
+---
+title: "LiDAR Point Cloud Processing"
+author: "Seamus Murphy"
+---
+install_cran(
+  pkgs,
+  repos = getOption("repos"),
+  type = getOption("pkgType"),
+  dependencies = NA,
+  upgrade = c("default", "ask", "always", "never"),
+  force = FALSE,
+  quiet = FALSE,
+  build = TRUE,
+  build_opts = c("--no-resave-data", "--no-manual", "--no-build-vignettes"),
+  build_manual = FALSE,
+  build_vignettes = FALSE,
+  ...
+)
+
+devtools::install_github(schochastics/academicons)

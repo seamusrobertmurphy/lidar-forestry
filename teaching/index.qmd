@@ -1,0 +1,7 @@
+---
+title: ""
+listing:
+  contents: teaching.yml
+  type: default
+  sort: false
+---

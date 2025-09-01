@@ -2,20 +2,49 @@ project:
   type: website
 
 website:
-  title: "lidar-forestry"
+  title: "LiDAR Toolset for Forest Monitoring & Stand Mensuration"
+  open-graph: true # https://quarto.org/docs/websites/website-tools.html#open-graph
+  page-footer:
+    left: "[Source](https://github.com/seamusrobertmurphy/lidar-forestry)"
   navbar:
-    left:
-      - href: index.qmd
-        text: Home
-      - about.qmd
+    title: "LiDAR Forestry Tools"
+    search: true
+    right:
+      - text: "Home"
+        href: index.qmd
+      - text: "LiDAR Point Clouds"
+        href: 01-point-cloud.qmd
+    tools:
+      - icon: github
+        menu:
+          - text: Source Code
+            href: https://github.com/seamusrobertmurphy/lidar-forestry
+          - text: Report a Bug
+            href: https://github.com/seamusrobertmurphy/lidar-forestry/issues
+          - text: Repo Collection
+            href: https://github.com/seamusrobertmurphy/
+      - icon: linkedin
+        href: https://linkedin.com/in/seamusrobertmurphy
+      - text: "{{< iconify ai googlescholar >}}"
+        href: https://scholar.google.com/citations?hl=en&user=jDGq9I4AAAAJ
+
+  sidebar:
+      pinned: true
+      style: "docked"
+      collapse-level: 1
+      contents:
+      - text: "Home"
+        href: index.qmd
+      - text: "LiDAR Point Clouds"
+        href: 01-point-cloud.qmd
+      - section: "About"
+        contents:
+          - text: "Bio"
+            href: about.qmd
+          - text: "Teaching"
+            href: teaching/index.qmd
 
 format:
   html:
-    theme:
-      - cosmo
-      - brand
-    css: styles.css
-    toc: true
-
-editor: visual
-
+    theme: [cosmo, styles.scss]
+engine: knitr

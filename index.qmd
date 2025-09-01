@@ -1,8 +1,73 @@
 ---
-title: "lidar-forestry"
+title: "LiDAR Forest Tools & Stand Mensuration"
+date: 2022-02-24
+author: 
+  - name: Seamus Murphy
+    orcid: 0000-0002-1792-0351 
+    email: seamusrobertmurphy@gmail.com
+abstract: > 
+  "The following documents preparatory steps required to derive digital surface models, ground segmentation, and canopy layers models from a raw unprocessed, point-cloud dataset of `xyz` aerial laser scanning points as it is first received from the data providers. Data processing operations was demonstrated using the open-source `lidR` package [@lidR]."
+keywords:
+  - LiDAR processing
+  - Point-Cloud Data
+  - Ground Segmentation
+format: 
+  html:
+    toc: true
+    toc-location: right
+    toc-title: "**Contents**"
+    toc-depth: 5
+    toc-expand: 4
+    theme: [minimal, styles.scss]
+    embed-resources: true
+highlight-style: github
+df-print: kable
+bibliography: references.bib
+engine: knitr
 ---
 
-This is a Quarto website.
+------------------------------------------------------------------------
+
+```{r setup}
+#| warning: false
+#| message: false
+#| error: false
+#| echo: false
+
+
+pacman::p_load(
+  "academicons", 
+  "curl", 
+  "dplyr",
+	"fontawesome",
+  "htmltools", "httr2",
+  "janitor",
+  "kableExtra", "knitr",
+  "lidR", "lutz", 
+  "openxlsx",
+  "PROJ",
+  "raster", "rasterVis", "reproj",
+  "sf",
+  "tinytex", "tmap", "tmaptools", "terra",
+  "useful", "usethis", 
+  "webshot", "webshot2", "weathercan")
+
+knitr::opts_chunk$set(
+  echo = TRUE, 
+  message = FALSE, 
+  warning = FALSE,
+  error = TRUE, 
+  comment = NA, 
+  tidy.opts = list(
+    width.cutoff = 60)
+  ) 
+#knit_hooks$set(webgl = hook_webgl)
+#knit_hooks$set(rgl.static = hook_rgl)
+sf::sf_use_s2(use_s2 = FALSE)
+options(htmltools.dir.version = FALSE, 
+        htmltools.preserve.raw = FALSE)
+tmap_options(max.raster = c(plot = 9500000, view = 10000000)) # allows large raster rendering
+```
 
 To learn more about Quarto websites visit <https://quarto.org/docs/websites>.
 
