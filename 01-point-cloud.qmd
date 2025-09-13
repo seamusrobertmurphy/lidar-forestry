@@ -1,20 +1,560 @@
 ---
 title: "LiDAR Point Cloud Processing"
-author: "Seamus Murphy"
+subtitle: "An End-to-End Workflow for High-Resolution Terrain and Canopy Modeling from Airborne LiDAR Data"
+date: 2022-02-24
+author: 
+  - name: Seamus Murphy
+    orcid: 0000-0002-1792-0351 
+    email: seamusrobertmurphy@gmail.com
+abstract: > 
+  This report documents an open-source workflow for processing raw airborne LiDAR point cloud data into digital surface and elevation model products. Employing the `lidR` package, this methodology demonstrates steps in data processing, catalog management, and advanced ground point classification using both the Cloth Simulation Filter (CSF) and Progressive Morphological Filter (PMF) algorithms. The pipeline generates high-resolution Digital Terrain Models (DTMs) and normalized point clouds ready for downstream forest mensuration and ecological analysis.
+keywords:
+  - LiDAR
+  - Point Cloud
+  - Ground Segmentation
+  - Digital Terrain Model (DTM)
+  - Forestry
+  - Remote Sensing
+format:
+  html:
+    toc: true
+    toc-location: right
+    toc-title: "**Contents**"
+    toc-depth: 5
+    toc-expand: 4
+    theme: [minimal, styles.scss]
+    embed-resources: true
+highlight-style: github
+df-print: kable
+bibliography: references.bib
+engine: knitr
+always_allow_html: true
+css: styles/academicons--google-scholar.css
 ---
-install_cran(
-  pkgs,
-  repos = getOption("repos"),
-  type = getOption("pkgType"),
-  dependencies = NA,
-  upgrade = c("default", "ask", "always", "never"),
-  force = FALSE,
-  quiet = FALSE,
-  build = TRUE,
-  build_opts = c("--no-resave-data", "--no-manual", "--no-build-vignettes"),
-  build_manual = FALSE,
-  build_vignettes = FALSE,
-  ...
-)
 
-devtools::install_github(schochastics/academicons)
+```{r setup}
+#| warning: false
+#| message: false
+#| error: false
+#| echo: false
+
+
+pacman::p_load(
+  "devtools",
+  "bibtex",
+  "cffdrs", "curl", "cols4all", "chromote",
+  "dplyr",
+  "ellmer",
+  "gstat", "geonetwork",
+  "htmltools", "httr2",
+  "janitor",
+  "kableExtra", "knitr",
+  "lidR", "lutz", 
+  "mapedit",
+  "ncdf4",
+  "openxlsx","OpenStreetMap", "osmdata",
+  "PROJ",
+  "raster", "rasterVis", "reproj", "rmapshaper", "renv", "RCSF",
+  "sf",
+  "tinytex", "tmap", "tmaptools", "terra", "tmap.networks", "tmap.glyphs", "tmap.cartogram",
+  "useful", "usethis", 
+  "weathercan")
+
+knitr::opts_chunk$set(
+  echo = TRUE, 
+  message = FALSE, 
+  warning = FALSE,
+  error = TRUE, 
+  comment = NA, 
+  tidy.opts = list(
+    width.cutoff = 60)
+  ) 
+
+sf::sf_use_s2(use_s2 = FALSE)
+options(htmltools.dir.version = FALSE, 
+        htmltools.preserve.raw = FALSE)
+tmap_options(max.raster = c(plot = 9500000, view = 10000000)) # allows large raster rendering
+#renv::init()
+```
+
+```{css, echo=FALSE, class.source = 'foldable', eval=F}
+div.column {
+    display: inline-block;
+    vertical-align: top;
+    width: 50%;
+}
+
+#TOC::before {
+  content: "";
+  display: block;
+  height:200px;
+  width: 200px;
+  background-image: url('https://raw.githubusercontent.com/seamusrobertmurphy/lidR-point-cloud-processing/refs/heads/main/13_lidR_PointCloud_Processing_files/markdown_pngs/las_tile_ahbau.png');
+  background-size: contain;
+  background-position: 50% 50%;
+  padding-top: 80px !important;
+  background-repeat: no-repeat;
+}
+```
+
+## 1. Introduction
+
+This document outlines the initial, computationally-intensive steps of processing raw LiDAR point cloud data into usable rasters for forest mensuration. The workflow focuses on ground segmentation and point classification. Commissioned by BC Timber Sales as part of the TCC Enhanced Forest Inventory work program, this pipeline focuses on data processing tasks essential to downstream forest mensuration and ecological analyses.
+
+------------------------------------------------------------------------
+
+#### Import Point Cloud
+
+The initial challenge in large-scale LiDAR processing is managing extensive datasets that often exceed available system memory. This workflow leverages the `lidR` package and its core innovation [@lidR-2], the `LAScatalog` object, to address this challenge.
+
+A `LAScatalog` serves as a high-level representation of a collection of `.las` or `.laz` files, enabling the batch processing of a complete LiDAR coverage without loading all points into memory. The `LAScatalog` operates by dividing the dataset into arbitrarily defined regions of interest (ROIs) called "chunks". It then seamlessly loops through each chunk, either sequentially or in parallel, to perform the necessary processing. This approach allows for the efficient processing of even tiny ROIs, regardless of whether they align with original file boundaries or if the files themselves are too large to fit in memory. After each chunk is processed, the individual outputs are automatically merged to create a final, continuous, wall-to-wall result.
+
+It is important to note that `LAScatalog` does not natively support datasets with overlapping files. When working with such data, it is a recommended practice to filter any overlaps, for example, by utilizing the `withheld` attribute to ensure accurate and reliable processing. Essentially, `LAScatalog` handles large data processing by:
+
+1.  Defining chunks: It partitions the entire dataset into arbitrarily defined regions of interest (ROIs).
+2.  Seamless Looping: It processes chunks sequentially or in parallel, regardless of individual file boundaries. This allows the `lidR` package to process tiny ROIs even if the original files are too large to fit into memory.
+3.  Merging Outputs: Once all chunks are processed, the outputs are merged to create a continuous, wall-to-wall result.
+
+#### Tidy Point Cloud
+
+We tested `lidR` operations using a single chunk of 311 LiDAR tiles of the Ahbau Lake district in Northern Cariboo. Initial attempts at catalog indexing and chunk processing were made using the `catalog_laxindex` and `catalog_retile` operations, but these were found to be a little more sluggish and buggy. The more efficient workflow was achieved by deploying the internal `lidR` tools of `readALSLAScatalog`, which was faster and offered simultaneous validation tools for rebuffering, spatial indexing, and filtering directly during the read-in process.
+
+Initial validation of the catalog tiling reported overlapping areas, a known issue as `LAScatalog` does not natively support datasets with overlapping files. To resolve this and avoid edge artifacts, recommended buffering was set at 10m, and the `-drop_class 19` filter was applied to remove points flagged as overlaps. A custom R function was also used to handle `.7z` archive files, showcasing the ability to manage diverse data formats.
+
+```{r}
+#| warning: false
+#| message: false
+#| error: false
+#| echo: true
+#| eval: false
+
+# Read and validate LAS files, then assemble them into a LAScatalog object.
+las_ctg_ahbau = readALSLAScatalog("./Data/Ahbau/Las_v12_ASPRS/", select = "xyzcr")
+# A custom R function was used to handle .7z archives.
+un7zip = function(archive, where) {
+  archive <- normalizePath(archive)
+  current_path <- setwd(where)
+  system(paste("7zr x", archive, sep = " "))
+  setwd(current_path)
+}
+un7zip(zip_file_ahbau_sub, zip_dir_ahbau_top)
+# Read and validate LAS files, then assemble them into a LAScatalog object.
+las_ctg_ahbau_indexed = readALSLAScatalog("./Data/Ahbau/Las_v12_ASPRS/")
+opt_select(las_ctg_ahbau_indexed) = "xyzcr"
+# Apply the '-drop_class 19' filter to remove overlapping points.
+opt_filter(las_ctg_ahbau_indexed) = '-drop_class 19'
+# Set chunking options for memory efficiency.
+opt_chunk_size(las_ctg_ahbau_indexed) = 1000
+opt_chunk_buffer(las_ctg_ahbau_indexed) = 10
+filter_duplicates(las_ctg_ahbau_indexed)
+is.indexed(las_ctg_ahbau_indexed)
+las_check(las_ctg_ahbau_indexed)
+plot(las_ctg_ahbau_indexed, chunk = TRUE)
+```
+
+::: {style="overflow: auto;"}
+<img src="assets/PNG/a-import-tile-chunks.png" alt="Check Check 1" style="width: 49%; float: left; margin-right: 2%;"/> <img src="assets/PNG/unnamed-chunk-4-1.png" alt="Chunk Check 2" style="width: 49%; float: left;"/>
+:::
+
+![](assets/PNG/tas_ctg_check.png){fig-align="center" width="560"}
+
+For visualization purposes, a single tile (`093g030122ne`) was plotted and flagged for all subsequent illustrations.
+
+``` r
+las_tile_ahbau = readLAS("./Data/Ahbau/Las_v12_ASPRS/093g030122ne.las", select = 'xyzcr', filter = '-drop_class 19')
+plot(las_tile_ahbau, bg = "white")
+```
+
+![](assets/PNG//las_tile_ahbau.png){fig-align="center" width="560"}
+
+------------------------------------------------------------------------
+
+## 2. Method
+
+#### Ground Point Classification
+
+Ground point classification is a critical step that isolates the points representing the terrain from those representing vegetation and other objects. This process is computationally demanding, especially with larger tile collections. This workflow compares two distinct algorithms to assess their performance and resulting data quality. The `RCSF` package was installed from CRAN and loaded into the repository, as it was found to facilitate the process with fewer bugs.
+
+-   **Cloth Simulation Filter (CSF):** The Cloth Simulation Filter algorithm (`csf()`) was fitted with specific parameters to account for variable topography across the study site and reduce post-processing errors [@zhang2016]. This included the `sloop_smooth`parameter applied over a cloth resolution of 10cm with a rigidness factor of 1. This method produced a visually superior result for the final DTM.
+
+-   **Progressive Morphological Filter (PMF):** The `pmf()` algorithm was also tested. As the following operations demonstrate, the `pmf()` tool produced notably grainier elevation model. This speaks to similar accounts documented in recent literature, which suggests that this algorithm, which was originally designed for raster-based operations, under-performs when tasked with full stream point-cloud workflows [@zhang2003][@roussel2020:3.2] .
+
+```{r}
+#| warning: false
+#| message: false
+#| error: false
+#| echo: true
+#| eval: false
+
+# Apply the Cloth Simulation Filter (CSF) algorithm
+library(RCSF)
+opt_output_files(las_ctg_ahbau_indexed) =  paste0(tempdir(), "./Data/las_ctg_ahbau_csf")
+las_ctg_ahbau_csf = classify_ground(las_ctg_ahbau_indexed, csf(sloop_smooth=TRUE, 0.5, 1))
+
+# Apply the Progressive Morphological Filter (PMF) algorithm
+util_makeZhangParam()
+las_ctg_ahbau_pmf = classify_ground(las_ctg_ahbau_indexed, pmf(seq(5, 9, 13), seq(3, 3, 3)))
+```
+
+```         
+## Metrics computation: [=-------------------------------------------------] 3% (1 threads)Metrics computation: [==------------------------------------------------] 4% (1 threads)Metrics computation: [==------------------------------------------------] 5% (1 threads)Metrics computation: [===-----------------------------------------------] 6% (1 threads)Metrics computation: [===-----------------------------------------------] 7% (1 threads)Metrics computation: [====----------------------------------------------] 8% (1 threads)Metrics computation: [====----------------------------------------------] 9% (1 threads)Metrics computation: [=====---------------------------------------------] 10% (1 threads)Metrics computation: [=====---------------------------------------------] 11% (1 threads)Metrics computation: [======--------------------------------------------] 12% (1 threads)Metrics computation: [======--------------------------------------------] 13% (1 threads)Metrics computation: [=======-------------------------------------------] 14% (1 threads)Metrics computation: [=======-------------------------------------------] 15% (1 threads)Metrics computation: [========------------------------------------------] 16% (1 threads)Metrics computation: [========------------------------------------------] 17% (1 threads)Metrics computation: [=========-----------------------------------------] 18% (1 threads)Metrics computation: [=========-----------------------------------------] 19% (1 threads)Metrics computation: [==========----------------------------------------] 20% (1 threads)Metrics computation: [==========----------------------------------------] 21% (1 threads)Metrics computation: [===========---------------------------------------] 22% (1 threads)Metrics computation: [===========---------------------------------------] 23% (1 threads)Metrics computation: [============--------------------------------------] 24% (1 threads)Metrics computation: [============--------------------------------------] 25% (1 threads)Metrics computation: [=============-------------------------------------] 26% (1 threads)Metrics computation: [=============-------------------------------------] 27% (1 threads)Metrics computation: [==============------------------------------------] 28% (1 threads)Metrics computation: [==============------------------------------------] 29% (1 threads)Metrics computation: [===============-----------------------------------] 30% (1 threads)Metrics computation: [===============-----------------------------------] 31% (1 threads)Metrics computation: [================----------------------------------] 32% (1 threads)Metrics computation: [================----------------------------------] 33% (1 threads)Metrics computation: [=================---------------------------------] 34% (1 threads)Metrics computation: [=================---------------------------------] 35% (1 threads)Metrics computation: [==================--------------------------------] 36% (1 threads)Metrics computation: [==================--------------------------------] 37% (1 threads)Metrics computation: [===================-------------------------------] 38% (1 threads)Metrics computation: [===================-------------------------------] 39% (1 threads)Metrics computation: [====================------------------------------] 40% (1 threads)Metrics computation: [====================------------------------------] 41% (1 threads)Metrics computation: [=====================-----------------------------] 42% (1 threads)Metrics computation: [=====================-----------------------------] 43% (1 threads)Metrics computation: [======================----------------------------] 44% (1 threads)Metrics computation: [======================----------------------------] 45% (1 threads)Metrics computation: [=======================---------------------------] 46% (1 threads)Metrics computation: [=======================---------------------------] 47% (1 threads)Metrics computation: [========================--------------------------] 48% (1 threads)Metrics computation: [========================--------------------------] 49% (1 threads)Metrics computation: [=========================-------------------------] 50% (1 threads)Metrics computation: [=========================-------------------------] 51% (1 threads)Metrics computation: [==========================------------------------] 52% (1 threads)Metrics computation: [==========================------------------------] 53% (1 threads)Metrics computation: [===========================-----------------------] 54% (1 threads)Metrics computation: [===========================-----------------------] 55% (1 threads)Metrics computation: [============================----------------------] 56% (1 threads)Metrics computation: [============================----------------------] 57% (1 threads)Metrics computation: [=============================---------------------] 58% (1 threads)Metrics computation: [=============================---------------------] 59% (1 threads)Metrics computation: [==============================--------------------] 60% (1 threads)Metrics computation: [==============================--------------------] 61% (1 threads)Metrics computation: [===============================-------------------] 62% (1 threads)Metrics computation: [===============================-------------------] 63% (1 threads)Metrics computation: [================================------------------] 64% (1 threads)Metrics computation: [================================------------------] 65% (1 threads)Metrics computation: [=================================-----------------] 66% (1 threads)Metrics computation: [=================================-----------------] 67% (1 threads)Metrics computation: [==================================----------------] 68% (1 threads)Metrics computation: [==================================----------------] 69% (1 threads)Metrics computation: [===================================---------------] 70% (1 threads)Metrics computation: [===================================---------------] 71% (1 threads)Metrics computation: [====================================--------------] 72% (1 threads)Metrics computation: [====================================--------------] 73% (1 threads)Metrics computation: [=====================================-------------] 74% (1 threads)Metrics computation: [=====================================-------------] 75% (1 threads)Metrics computation: [======================================------------] 76% (1 threads)Metrics computation: [======================================------------] 77% (1 threads)Metrics computation: [=======================================-----------] 78% (1 threads)Metrics computation: [=======================================-----------] 79% (1 threads)Metrics computation: [========================================----------] 80% (1 threads)Metrics computation: [========================================----------] 81% (1 threads)Metrics computation: [=========================================---------] 82% (1 threads)Metrics computation: [=========================================---------] 83% (1 threads)Metrics computation: [==========================================--------] 84% (1 threads)Metrics computation: [==========================================--------] 85% (1 threads)Metrics computation: [===========================================-------] 86% (1 threads)Metrics computation: [===========================================-------] 87% (1 threads)Metrics computation: [============================================------] 88% (1 threads)Metrics computation: [============================================------] 89% (1 threads)Metrics computation: [=============================================-----] 90% (1 threads)Metrics computation: [=============================================-----] 91% (1 threads)Metrics computation: [==============================================----] 92% (1 threads)Metrics computation: [==============================================----] 93% (1 threads)Metrics computation: [===============================================---] 94% (1 threads)Metrics computation: [===============================================---] 95% (1 threads)Metrics computation: [================================================--] 96% (1 threads)Metrics computation: [================================================--] 97% (1 threads)Metrics computation: [=================================================-] 98% (1 threads)Metrics computation: [=================================================-] 99% (1 threads)Metrics computation: [==================================================] 100% (1 threads)
+```
+
+------------------------------------------------------------------------
+
+#### Noise Removal
+
+Once ground points are classified, any remaining noise, such as atmospheric interference or photon noise, is identified and removed to ensure data integrity. This process was carried out using the Statistical Outlier Removal (`sor`) algorithm, which was fitted with a default neighborhood sample of `k=10` and a multiplier of `m=3`.
+
+The workflow considered four potential methods for noise screening, including:
+
+1.  Using internal algorithms with the `filter_poi` function and a `LASNOISE` string.
+2.  Filtering with `opt_filter` and the `-drop class 19` string.
+3.  Screening by a Z-axis threshold (e.g., `Z > 40 & Z < 0`).
+4.  Screening by the 95th percentile.
+
+The approach of using `filter_poi` with an internal algorithm was found to be slower in the long run due to a loss of spatial indexing after a new catalog object was assigned.
+
+```{r}
+#| warning: false
+#| message: false
+#| error: false
+#| echo: true
+#| eval: false
+
+opt_output_files(las_ctg_ahbau_csf) = paste0(tempdir(), "./Data/las_ctg_ahbau_csf_so")
+opt_select(las_ctg_ahbau_csf) = "xyzcr"
+opt_filter(las_ctg_ahbau_csf) = "-drop_class 19"
+las_ctg_ahbau_csf_so = classify_noise(las_ctg_ahbau_csf, sor(k=10, m=3))
+las_ctg_ahbau_csf_sor = filter_poi(las_ctg_ahbau_csf_so, Classification != LASNOISE)
+```
+
+::: {style="overflow: auto;"}
+<img src="assets/PNG/las_tile_ahbau_csf_so.png" alt="Noise Removal 1" style="width: 49%; float: left; margin-right: 2%;"/> <img src="assets/PNG/las_tile_ahbau_pmf_so.png" alt="Noise Removal 2" style="width: 49%; float: left;"/>
+:::
+
+------------------------------------------------------------------------
+
+#### Digital Terrain Model (DTM)
+
+This section outlines a crucial rasterization step in terrain analysis: deriving a DTM from the classified ground points. This model is a fundamental input for all subsequent height-based analyses. The Inverse Distance Weighting (`knnidw`) algorithm was chosen for this task due to its efficiency and robustness, as well as its sensitivity to lake anomalies [@tu2020]. The `knnidw` parameters were set to a default maximum radius of 50m, a neighborhood of 10, an inverse distance weighting power of 2, and a resolution of 1m.
+
+A DTM was derived from the continuous, cleaned point cloud by visually comparing the output of the CSF and PMF processing. This visual assessment confirmed that the Cloth Simulation Filter (CSF) produced a better DEM result than the PMF, which appeared grainy. This is a key finding, as `lidR` operations are point-oriented, making `csf` a more suitable choice than the raster-based PMF algorithm.
+
+```{r}
+#| warning: false
+#| message: false
+#| error: false
+#| echo: true
+#| eval: false
+
+las_tile_ahbau_csf_sor_dtm = grid_terrain(las_tile_ahbau_csf_sor, 1, knnidw(10, 2, 50))
+las_tile_ahbau_pmf_sor_dtm = grid_terrain(las_tile_ahbau_pmf_sor, 1, knnidw(10, 2, 50))
+las_tile_ahbau_csf_sor_dtm_plot = plot_dtm3d(las_tile_ahbau_csf_sor_dtm, bg = "white") 
+las_tile_ahbau_pmf_sor_dtm_plot = plot_dtm3d(las_tile_ahbau_pmf_sor_dtm, bg = "white") 
+```
+
+::: {style="overflow: auto;"}
+<img src="assets/PNG/las_tile_ahbau_csf_sor_dtm.png" alt="DTM-1" style="width: 49%; float: left; margin-right: 2%;"/> <img src="assets/PNG/las_tile_ahbau_pmf_sor_dtm.png" alt="DTM-2" style="width: 49%; float: left;"/>
+:::
+
+------------------------------------------------------------------------
+
+Visually, the cloth simulation filter produced a sharper looking elevation model, which appears noticeably grainy. The former output was nomianted as the candidate model to proceed in DEM preparations across the rest of the Ahbau catalog.[^1] In the following, the `csf` raster rendered in a hillshade visualization, highlighting the terrain feature beneath.
+
+```{r}
+#| warning: false
+#| message: false
+#| error: false
+#| echo: true
+#| eval: false
+
+# Define LAScatalog options for DTM generation
+opt_output_files(las_ctg_ahbau_csf_sor) = paste0(tempdir(), "./Data/las_ctg_ahbau_dtm")
+opt_select(las_ctg_ahbau_csf_sor) = "xyzcr"
+opt_filter(las_ctg_ahbau_csf_sor) = '-drop_class 19'
+opt_chunk_size(las_ctg_ahbau_csf_sor) = 1000
+opt_chunk_buffer(las_ctg_ahbau_csf_sor) = 10
+sensor(las_ctg_ahbau_csf_sor) = 'als'
+index(las_ctg_ahbau_csf_sor) = "quadtree"
+
+# Generate the DTM from the classified point cloud
+las_ctg_ahbau_csf_dtm = grid_terrain(las_ctg_ahbau, 1, knnidw())
+
+# Create a hillshade visualization from the DTM
+las_ctg_ahbau_csf_sor_dtm_crop = crop(las_ctg_ahbau_csf_dtm, extent(las_ctg_ahbau_csf_dtm) - 10)
+crs(las_ctg_ahbau_csf_sor_dtm_crop) = 3005
+las_ctg_ahbau_csf_sor_dtm_slope = terra::terrain(las_ctg_ahbau_csf_sor_dtm_crop, "slope", unit = "radians")
+las_ctg_ahbau_csf_sor_dtm_aspect = terra::terrain(las_ctg_ahbau_csf_sor_dtm_crop, "aspect", unit = "radians")
+las_ctg_ahbau_csf_sor_dtm_shade = hillShade(las_ctg_ahbau_csf_sor_dtm_slope, las_ctg_ahbau_csf_sor_dtm_aspect, 40, 270)
+plot(las_ctg_ahbau_csf_sor_dtm_shade, col=grey(0:100/100), legend=FALSE)
+```
+
+::: {style="overflow: auto;"}
+![hillshade-1](assets/PNG/las_ctg_ahbau_dtm_processing.png){alt="hillshade-1" style="float: left;" width="49%"}![hillshade-2](assets/PNG/las_ctg_ahbau_hillshade.png){alt="hillshade-2" style="float: left; margin-right: 2%;" width="49%"}
+:::
+
+------------------------------------------------------------------------
+
+#### Height Normalization {#height-normalization-of-point-cloud}
+
+The final step in preparing the point cloud for canopy analysis is height normalization. This process uses the newly created DTM to transform the point cloud's Z values from absolute elevation to height above ground level. A height-normalized point cloud is the essential input for all subsequent canopy-related analyses, such as individual tree detection and canopy height modeling.
+
+``` r
+#| warning: false
+#| message: false
+#| error: false
+#| echo: true
+#| eval: false
+opt_output_files(las_ctg_ahbau_csf_sor) =  paste0(tempdir(), "./Data/las_ctg_ahbau_norm")
+opt_select(las_ctg_ahbau_csf_sor) = "xyzr"
+opt_filter(las_ctg_ahbau_csf_sor) = '-keep_first' 
+opt_chunk_size(las_ctg_ahbau_csf_sor) = 1000 
+opt_chunk_buffer(las_ctg_ahbau_csf_sor) = 10
+sensor(las_ctg_ahbau_csf_sor) = 'als'
+index(las_ctg_ahbau_csf_sor) = "quadtree"
+
+las_ctg_ahbau_csf_sor_norm = normalize_height(las_ctg_ahbau_csf_sor, knnidw())
+las_tile_ahbau_csf_sor_norm = normalize_height(las_tile_ahbau_csf_sor, knnidw())
+hist(filter_ground(las_tile_ahbau_csf_sor_norm)$Z, 
+     breaks = seq(-0.6, 0.6, 0.01), main = "", xlab = "Elevation")
+plot(las_tile_ahbau_csf_sor_norm, bg = "white")
+```
+
+::: {style="overflow: auto;"}
+![height-norm-1](assets/PNG/las_tile_ahbau_norm.png){alt="height-norm-1" style="float: left;" width="49%"}![height-norm-2](assets/PNG/las_tile_ahbau_norm_histogram.png){alt="height-norm-2" style="float: left; margin-right: 2%;" width="49%"}
+:::
+
+```         
+## Inverse distance weighting: [=====---------------------------------------------] 10% (1 threads)Inverse distance weighting: [=====---------------------------------------------] 11% (1 threads)Inverse distance weighting: [======--------------------------------------------] 12% (1 threads)Inverse distance weighting: [======--------------------------------------------] 13% (1 threads)Inverse distance weighting: [=======-------------------------------------------] 14% (1 threads)Inverse distance weighting: [=======-------------------------------------------] 15% (1 threads)Inverse distance weighting: [========------------------------------------------] 16% (1 threads)Inverse distance weighting: [========------------------------------------------] 17% (1 threads)Inverse distance weighting: [=========-----------------------------------------] 18% (1 threads)Inverse distance weighting: [=========-----------------------------------------] 19% (1 threads)Inverse distance weighting: [==========----------------------------------------] 20% (1 threads)Inverse distance weighting: [==========----------------------------------------] 21% (1 threads)Inverse distance weighting: [===========---------------------------------------] 22% (1 threads)Inverse distance weighting: [===========---------------------------------------] 23% (1 threads)Inverse distance weighting: [============--------------------------------------] 24% (1 threads)Inverse distance weighting: [============--------------------------------------] 25% (1 threads)Inverse distance weighting: [=============-------------------------------------] 26% (1 threads)Inverse distance weighting: [=============-------------------------------------] 27% (1 threads)Inverse distance weighting: [==============------------------------------------] 28% (1 threads)Inverse distance weighting: [==============------------------------------------] 29% (1 threads)Inverse distance weighting: [===============-----------------------------------] 30% (1 threads)Inverse distance weighting: [===============-----------------------------------] 31% (1 threads)Inverse distance weighting: [================----------------------------------] 32% (1 threads)Inverse distance weighting: [================----------------------------------] 33% (1 threads)Inverse distance weighting: [=================---------------------------------] 34% (1 threads)Inverse distance weighting: [=================---------------------------------] 35% (1 threads)Inverse distance weighting: [==================--------------------------------] 36% (1 threads)Inverse distance weighting: [==================--------------------------------] 37% (1 threads)Inverse distance weighting: [===================-------------------------------] 38% (1 threads)Inverse distance weighting: [===================-------------------------------] 39% (1 threads)Inverse distance weighting: [====================------------------------------] 40% (1 threads)Inverse distance weighting: [====================------------------------------] 41% (1 threads)Inverse distance weighting: [=====================-----------------------------] 42% (1 threads)Inverse distance weighting: [=====================-----------------------------] 43% (1 threads)Inverse distance weighting: [======================----------------------------] 44% (1 threads)Inverse distance weighting: [======================----------------------------] 45% (1 threads)Inverse distance weighting: [=======================---------------------------] 46% (1 threads)Inverse distance weighting: [=======================---------------------------] 47% (1 threads)Inverse distance weighting: [========================--------------------------] 48% (1 threads)Inverse distance weighting: [========================--------------------------] 49% (1 threads)Inverse distance weighting: [=========================-------------------------] 50% (1 threads)Inverse distance weighting: [=========================-------------------------] 51% (1 threads)Inverse distance weighting: [==========================------------------------] 52% (1 threads)Inverse distance weighting: [==========================------------------------] 53% (1 threads)Inverse distance weighting: [===========================-----------------------] 54% (1 threads)Inverse distance weighting: [===========================-----------------------] 55% (1 threads)Inverse distance weighting: [============================----------------------] 56% (1 threads)Inverse distance weighting: [============================----------------------] 57% (1 threads)Inverse distance weighting: [=============================---------------------] 58% (1 threads)Inverse distance weighting: [=============================---------------------] 59% (1 threads)Inverse distance weighting: [==============================--------------------] 60% (1 threads)Inverse distance weighting: [==============================--------------------] 61% (1 threads)Inverse distance weighting: [===============================-------------------] 62% (1 threads)Inverse distance weighting: [===============================-------------------] 63% (1 threads)Inverse distance weighting: [================================------------------] 64% (1 threads)Inverse distance weighting: [================================------------------] 65% (1 threads)Inverse distance weighting: [=================================-----------------] 66% (1 threads)Inverse distance weighting: [=================================-----------------] 67% (1 threads)Inverse distance weighting: [==================================----------------] 68% (1 threads)Inverse distance weighting: [==================================----------------] 69% (1 threads)Inverse distance weighting: [===================================---------------] 70% (1 threads)Inverse distance weighting: [===================================---------------] 71% (1 threads)Inverse distance weighting: [====================================--------------] 72% (1 threads)Inverse distance weighting: [====================================--------------] 73% (1 threads)Inverse distance weighting: [=====================================-------------] 74% (1 threads)Inverse distance weighting: [=====================================-------------] 75% (1 threads)Inverse distance weighting: [======================================------------] 76% (1 threads)Inverse distance weighting: [======================================------------] 77% (1 threads)Inverse distance weighting: [=======================================-----------] 78% (1 threads)Inverse distance weighting: [=======================================-----------] 79% (1 threads)Inverse distance weighting: [========================================----------] 80% (1 threads)Inverse distance weighting: [========================================----------] 81% (1 threads)Inverse distance weighting: [=========================================---------] 82% (1 threads)Inverse distance weighting: [=========================================---------] 83% (1 threads)Inverse distance weighting: [==========================================--------] 84% (1 threads)Inverse distance weighting: [==========================================--------] 85% (1 threads)Inverse distance weighting: [===========================================-------] 86% (1 threads)Inverse distance weighting: [===========================================-------] 87% (1 threads)Inverse distance weighting: [============================================------] 88% (1 threads)Inverse distance weighting: [============================================------] 89% (1 threads)Inverse distance weighting: [=============================================-----] 90% (1 threads)Inverse distance weighting: [=============================================-----] 91% (1 threads)Inverse distance weighting: [==============================================----] 92% (1 threads)Inverse distance weighting: [==============================================----] 93% (1 threads)Inverse distance weighting: [===============================================---] 94% (1 threads)Inverse distance weighting: [===============================================---] 95% (1 threads)Inverse distance weighting: [================================================--] 96% (1 threads)Inverse distance weighting: [================================================--] 97% (1 threads)Inverse distance weighting: [=================================================-] 98% (1 threads)Inverse distance weighting: [=================================================-] 99% (1 threads)Inverse distance weighting: [==================================================] 100% (1 threads)
+```
+
+------------------------------------------------------------------------
+
+## 3. Result
+
+#### Area-Based Canopy Height Model {#area-based-canopy-height-model}
+
+A high-resolution Canopy Height Model (CHM) was derived from the height-normalized point cloud using the `dsmtin`algorithm. The CHM provides a continuous raster representation of the forest canopy, which is a key product for visual assessment and quantitative analysis, and is a fundamental input for both area-based and individual tree-based methods.
+
+``` r
+#| warning: false
+#| message: false
+#| error: false
+#| echo: true
+#| eval: false
+
+opt_selopt_output_files(las_ctg_ahbau_csf_sor_norm) = paste0(tempdir(), "./Data/las_ctg_ahbau_dtm")
+opt_select(las_ctg_ahbau_csf_sor_norm) = "xyzr"
+opt_filter(las_ctg_ahbau_csf_sor_norm) = '-keep_first' 
+opt_chunk_size(las_ctg_ahbau_csf_sor_norm) = 1000 
+opt_chunk_buffer(las_ctg_ahbau_csf_sor_norm) = 10
+sensor(las_ctg_ahbau_csf_sor_norm) = 'als'
+index(las_ctg_ahbau_csf_sor_norm) = "auto"
+
+las_ctg_ahbau_chm = grid_canopy(las_ctg_ahbau_csf_sor_norm, 1, dsmtin(8))
+las_tile_ahbau_chm = grid_canopy(las_tile_ahbau_csf_sor_norm, 1, dsmtin(8))
+plot(las_tile_ahbau_chm, col = height.colors(50))
+```
+
+![](assets/PNG/las_tile_ahbau_chm.png)
+
+------------------------------------------------------------------------
+
+#### Individual Tree Detection & Segmentation
+
+This section outlines the process for identifying and segmenting individual tree crowns, which is the most accurate method for deriving metrics like `stems/ha` and stand height in forest mensuration.
+
+#### Tree top detection
+
+Individual trees were detected using the local maxima filter (`lmf`) algorithm. A key step in this process was the application of a custom window function, which uses a height-based allometric model to dynamically determine the search radius for each tree top. This method allows the model to adapt to variations in tree size across the landscape, leading to a more accurate detection. The `uniqueness` function was also used to prevent replicated trees from being counted across adjacent tiles.
+
+```{r}
+#| warning: false
+#| message: false
+#| error: false
+#| echo: true
+#| eval: false
+
+# window function (Quan, 2022)
+wf_Quan<-function(x){ #so far these parameters are best will try 6m floor. 
+  a=0.179-0.1
+  b=0.51+0.5 #Go big but not 2.49 big. maybe increase slope a hair.
+  y<-a*x+b #y[x<15]=2.2
+  return(y)}
+heights <- seq(0,40,0.5)
+window <- wf_proto(heights)
+plot(heights, window, type = "l",  ylim = c(0,12), xlab="point elevation (m)", ylab="window diameter (m)")
+
+# find trees
+las_tile_ahbau_ttops <- find_trees(las_tile_ahbau_csf_sor_norm, lmf(wf_Quan), uniqueness = "bitmerge")
+las_tile_ahbau_ttops_sf = st_as_sf(las_tile_ahbau_ttops)
+proj4string(las_tile_ahbau_ttops) <- defaultCRS
+proj4string(las_tile_ahbau_chm) <- defaultCRS
+st_crs(las_tile_ahbau_ttops_sf) = defaultCRS
+
+mypalette<-brewer.pal(8,"Reds")
+plot(las_tile_ahbau_chm, col = mypalette, alpha=0.6)
+plot(st_geometry(las_tile_ahbau_ttops_sf["treeID"]), add=TRUE, cex = 0.001, pch=19, col = 'red', alpha=0.8)
+```
+
+::: {style="overflow: auto;"}
+![window-function-1](assets/PNG/unnamed-chunk-3-1-window-function.png){alt="window-function-1" style="float: left;" width="49%"}![window-function-2](assets/PNG/unnamed-chunk-3-1-window-function-b.png){alt="window-function-2" style="float: left; margin-right: 2%;" width="49%"}
+:::
+
+------------------------------------------------------------------------
+
+#### Crown Segmentation
+
+Following detection, individual tree crowns were segmented to delineate their exact boundaries. This is a critical step in a batch processing workflow, as it ensures that trees are not double-counted by multiple tiles. The `dalponte2016` algorithm was used for this process, which assigns a unique ID to each point based on the segmented tree it belongs to.
+
+```{r}
+#| warning: false
+#| message: false
+#| error: false
+#| echo: true
+#| eval: false
+
+algo = dalponte2016(las_tile_ahbau_chm, las_tile_ahbau_ttops)
+las_tile_ahbau_segmented = segment_trees(las_tile_ahbau_csf_sor_norm, algo)
+las_tile_ahbau_segmented_crowns = delineate_crowns(las_tile_ahbau_segmented, type = 'convex')
+las_tile_ahbau_segmented_crowns_spplot = sp::plot(las_tile_ahbau_segmented_crowns, cex=0.000001, axes = TRUE, alpha=0.1)
+```
+
+![](assets/PNG/tree-detection-poly.png)
+
+------------------------------------------------------------------------
+
+#### Stems Per Hectare
+
+This section explores two distinct approaches for deriving a `stems/ha` predictor. The point-based method leverages the accuracy of individual tree detection, while the raster-based method uses a simpler, aggregation-based approach.
+
+#### Point-Based Method
+
+The point-based approach is considered the most accurate method for deriving forest inventory metrics from LiDAR data. By building on the ITDS pipeline, this workflow derives a `stemsha_L` predictor by rasterizing the precise locations of the detected individual trees, providing a highly reliable and detailed stem map.
+
+```{r}
+#| warning: false
+#| message: false
+#| error: false
+#| echo: true
+#| eval: false
+
+#sp::spTransform(las_tile_ahbau_segmented_crowns) = defaultCRS
+las_tile_ahbau_segmented_crowns_sf = st_as_sf(las_tile_ahbau_segmented_crowns, coords = c("XTOP", "YTOP"), st_crs=defaultCRS)
+psych::describe(las_tile_ahbau_segmented_crowns_sf$treeID)
+
+raster_template = rast(ext(las_tile_ahbau_chm), resolution = 20, crs = st_crs(las_tile_ahbau_chm)$wkt)
+las_tile_ahbau_ttops_rast = rasterize(vect(las_tile_ahbau_ttops_sf), raster_template, fun = sum, touches = TRUE)
+stemsha_L_rast = las_tile_ahbau_ttops_rast*5
+crs(stemsha_L_rast) = defaultCRS
+plot(stemsha_L_rast)
+stemsha_L = raster::raster(stemsha_L_rast, filename = "./Data/stemsha_L.tif")
+stemsha_L = writeRaster(stemsha_L, filename = "./Data/stemsha_L.tif", overwrite=TRUE)
+plot(stemsha_L)
+```
+
+![](assets/PNG/unnamed-chunk-9-1%202.png){fig-align="center" width="336"}
+
+------------------------------------------------------------------------
+
+#### Raster-Based Method
+
+As an alternative, a stem map was also derived from the CHM using raster aggregation functions. While this method is computationally simpler, its accuracy is limited by the aggregation sampling, which can result in rounding or omission errors. For instance, in one analysis, the method resulted in a significant reduction in cell numbers (`ncells: 1080 > 330`), indicating a loss of data integrity.
+
+```{r}
+#| warning: false
+#| message: false
+#| error: false
+#| echo: true
+#| eval: false
+
+# Point-to-raster 2 resolutions
+ttops_chm_p2r_05 <- locate_trees(chm_p2r_05, lmf(5))
+
+las_tile_ahbau_chm = grid_canopy(las_tile_ahbau_csf_sor_norm, 1, dsmtin(8))
+plot(lead_htop_raster, col = height.colors(50))
+
+chm_p2r_05 <- rasterize_canopy(las, 0.5, p2r(subcircle = 0.2), pkg = "terra")
+chm_p2r_1 <- rasterize_canopy(las, 1, p2r(subcircle = 0.2), pkg = "terra")
+
+# Pitfree with and without subcircle tweak
+chm_pitfree_05_1 <- rasterize_canopy(las, 0.5, pitfree(), pkg = "terra")
+chm_pitfree_05_2 <- rasterize_canopy(las, 0.5, pitfree(subcircle = 0.2), pkg = "terra")
+
+# Post-processing median filter
+kernel <- matrix(1,3,3)
+chm_p2r_05_smoothed <- terra::focal(chm_p2r_05, w = kernel, fun = median, na.rm = TRUE)
+chm_p2r_1_smoothed <- terra::focal(chm_p2r_1, w = kernel, fun = median, na.rm = TRUE)
+
+# chm to stem map pipeline
+lead_htop = rast("./Data/Raster_Covariates/lead_htop_raster.tif")
+elev = rast("./Data/Raster_Covariates/elev_raster.tif")
+elev = mask(elev, vect(aoi_sf))
+lead_htop = mask(lead_htop, vect(aoi_sf))
+lead_htop[lead_htop < 1.3] <- NA
+elev = mask(elev, lead_htop, inverse=FALSE)
+plot(lead_htop, main = "canopy height (m)")
+plot(elev, main = "elevation")
+```
+
+#### 95% Canopy Height Adjustment
+
+```{r}
+{r}
+#| warning: false
+#| message: false
+#| error: false
+#| echo: true
+#| eval: false
+
+# custom function writing
+quant95 <- function(x, ...) quantile(x, c(.95), na.rm = TRUE)
+custFuns <- list(quant95, max)
+names(custFuns) <- c("95thQuantile", "Max")
+```
+
+```{r}
+#| warning: false
+#| message: false
+#| error: false
+#| echo: true
+#| eval: false
+
+#raster post-process smoothing
+kernel <- matrix(1,3,3)
+terra::focal(lead_htop_rast, w = kernel, fun = median, na.rm = TRUE)
+lead_htop_raster = raster(lead_htop)
+#foretTools pipeline
+ttops_6m_proto = vwf(CHM = lead_htop_raster, winFun = wf_proto, minHeight = 6)
+ttops_6m_Plowright = vwf(CHM = lead_htop_raster, winFun = wf_Plowright, minHeight = 6)
+ttops_6m_wf5 = vwf(CHM = lead_htop_raster, winFun = 5, minHeight = 6)
+ttops_2m_proto = vwf(CHM = lead_htop_raster, winFun = wf_proto, minHeight = 2)
+ttops_2m_Plowright = vwf(CHM = lead_htop_raster, winFun = wf_Plowright, minHeight = 2)
+# window size mining
+height_crown_cor = lm(ttops_6m_proto$height ~ ttops_6m_proto$winRadius)
+height_crown_cor 
+
+# custom functions insert here
+sp_summarise(ttops_6m_proto, areas = vri_aoi_sf, variables = "height", statFuns = custFuns)
+sp_summarise(ttops_6m_proto, areas = vri_aoi_sf, statFuns = custFuns) #treecount
+
+# rasterized results at 50m resolution
+gridStats <- sp_summarise(ttops_6m_proto = ttops, grid = 50, variables = "height")
+
+#lidr pipeline
+ttops_6m_proto = lidR::find_trees(lead_htop_raster[lead_htop_raster>6], lmf(wf_Quan))
+ttops_6m_Plowright = lidR::find_trees(lead_htop_raster[lead_htop_raster>6], lmf(wf_Plowright))
+stemsha_L_sf = st_as_sf(ttops_6m_proto)
+stemsha_L_raster = raster::raster(stemsha_L_sf)
+# visualize
+mypalette<-brewer.pal(8,"Greens")
+#plot(lead_htop_raster, col = mypalette, alpha=0.6)
+#plot(st_geometry(stemsha_L["treeID"]), add=TRUE, cex = 0.001, pch=19, col = 'red', alpha=0.8)
+writeRaster(stemsha_L_raster, filename = "./Data/Raster_Covariates/stemsha_L_raster.tif", overwrite=TRUE)
+plot(stemsha_L_raster)
+```
+
+![](assets/PNG/chm-stems.png)
+
+[^1]: Reminder: Run individual `las_check` on two chunks showing warnings to derive image report of `grid_terrain… knnidw()` operation in the bottom image
