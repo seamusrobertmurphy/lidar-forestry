@@ -1,50 +1,79 @@
 project:
-  type: website
+  type: book
 
-website:
-  title: "LiDAR Toolset for Forest Monitoring & Stand Mensuration"
-  open-graph: true # https://quarto.org/docs/websites/website-tools.html#open-graph
+book:
+  title: "LiDAR Forestry"
+  author: 
+    - name: Seamus Murphy
+      url: https://scholar.google.com/citations?hl=en&user=jDGq9I4AAAAJ
+      orcid: 0000-0002-1792-0351 
+      email: seamusrobertmurphy@gmail.com
+  date: today
+  favicon: ./assets/PNG/favicon.png
+  open-graph: true 
   page-footer:
     left: "[Source](https://github.com/seamusrobertmurphy/lidar-forestry)"
-  navbar:
+  
+  site-url: https://seamusrobertmurphy.quarto.pub/lidar-forestry/
+  repo-url: https://github.com/seamusrobertmurphy/lidar-forestry
+  repo-branch: main
+  repo-actions: [edit, issue]
+
+  tools:
+    - icon: linkedin
+      href: https://linkedin.com/in/seamusrobertmurphy
+      text: "LinkedIn"
+    - icon: file-earmark-pdf
+      href: https://drive.google.com/uc?export=download&id=13YLhsRCAMMHQw-jd2SJdaRJH9udBGytP
+      text: "Resume"
+    - icon: mortarboard
+      href: https://scholar.google.com/citations?hl=en&user=jDGq9I4AAAAJ
+      text: "Scholar"
+
+  chapters:
+    - index.qmd
+    - point-cloud/index.qmd
+    - stem-detect/index.qmd
+    - canopy-height/index.qmd
+    - biomass-model/index.qmd
+
+  appendices:
+    - resources/index.qmd
+
+bibliography: 
+  - references.bib
+  
+sidebar:
     title: "LiDAR Forestry Tools"
     search: true
-    right:
-      - text: "Home"
-        href: index.qmd
-      - text: "LiDAR Point Clouds"
-        href: 01-point-cloud.qmd
-    tools:
-      - icon: github
-        menu:
-          - text: Source Code
-            href: https://github.com/seamusrobertmurphy/lidar-forestry
-          - text: Report a Bug
-            href: https://github.com/seamusrobertmurphy/lidar-forestry/issues
-          - text: Repo Collection
-            href: https://github.com/seamusrobertmurphy/
-      - icon: linkedin
-        href: https://linkedin.com/in/seamusrobertmurphy
-      - text: "{{< iconify ai googlescholar >}}"
-        href: https://scholar.google.com/citations?hl=en&user=jDGq9I4AAAAJ
-
-  sidebar:
-      pinned: true
-      style: "docked"
-      collapse-level: 1
-      contents:
-      - text: "Home"
-        href: index.qmd
-      - text: "LiDAR Point Clouds"
-        href: 01-point-cloud.qmd
-      - section: "About"
-        contents:
-          - text: "Bio"
-            href: about.qmd
-          - text: "Teaching"
-            href: teaching/index.qmd
+    style: "docked"
+    collapse-level: 2
 
 format:
   html:
-    theme: [cosmo, styles.scss]
+    number-depth: 2
+    theme: 
+      - styles.scss
+      - default
+    code-fold: false
+    code-summary: "Code"
+    code-tools: true
+    code-link: true
+    knitr:
+      opts_chunk:
+        out.width: 100%
+        R.options:
+          width: 68
+
 engine: knitr
+
+knitr:
+  opts_chunk: 
+    collapse: true
+    comment: "#" 
+    R.options:
+      knitr.graphics.auto_pdf: true
+      dplyr.print_min: 6
+      dplyr.print_max: 6
+      stars.crs: 17
+      digits: 3

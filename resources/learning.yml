@@ -1,0 +1,90 @@
+- title: '<span style="color: rgb(96, 165, 250); font-weight: 600;">LiDAR:</span> Forest Height Analysis'
+  date: 2023-10-15
+  description: "Advanced forest structure analysis toolkit combining LiDAR and photogrammetric data for operational forest inventory planning. Features automated tree top detection algorithms, canopy height model generation, and stand structure characterization supporting efficient field plot allocation and sampling design. Includes crown delineation protocols, diameter-height relationship modeling, and accessibility analysis for optimizing field crew deployment in complex terrain environments."
+  path: https://rpubs.com/seamusmurphy/gov_sk_tree_height_variability
+  image: ../assets/PNG/LiDAR-stand-height-icon-c.png  
+  image-height: "40"
+
+- title: '<span style="color: rgb(96, 165, 250); font-weight: 600;">LiDAR:</span> Ash Dieback Stem Mapping'
+  date: 2022-03-12
+  description: "LiDAR workflow for mapping ash dieback disease *(Hymenoscyphus fraxineus)* using high-resolution point cloud data and field validation. Combines canopy metrics with ground data to detect disease progression patterns, quantify canopy gaps from ash mortality, and map stem distribution changes over time. Features automated algorithms for identifying healthy versus declining ash trees through LiDAR-derived crown metrics, supporting targeted forest health interventions and silvicultural planning in diseased stands."
+  path: https://rpubs.com/seamusmurphy/ash-dieback
+  image: https://raw.githubusercontent.com/seamusrobertmurphy/ash-dieback-stem-map/refs/heads/main/ash-dieback-stem-map_files/figure-gfm/unnamed-chunk-5-1.png
+
+- title: '<span style="color: rgb(96, 165, 250); font-weight: 600;">RADAR</span> Detection of Inland Wetlands: A Multi-Disciplinary Study of SAR-Landsat Integrated Time Series with Community Mapping Ground Data'
+  date: 2024-06-15
+  description: "Framework for mapping endorheic wetland dynamics, combining Sentinel-1 InSAR processing with Landsat time series analysis (1994-2015), using water extraction indices (NDWI, MNDWI, AWEIsh) and spectral mixture analysis for sub-pixel water detection. Community mapping components include key informant interviews, focus group discussions, and rapid participatory appraisals capturing local ecological knowledge of seasonal fishing migration patterns and traditional resource management practices."
+  path: https://rpubs.com/seamusmurphy/mapping-endorheic-wetland-dynamics
+  image: ../assets/PNG/Wetland-Mapping-icon-a.png  
+
+  date: 2024-06-15
+  description: "Framework for mapping endorheic wetland dynamics, combining Sentinel-1 InSAR processing with Landsat time series analysis (1994-2015), using water extraction indices (NDWI, MNDWI, AWEIsh) and spectral mixture analysis for sub-pixel water detection. Community mapping components include key informant interviews, focus group discussions, and rapid participatory appraisals capturing local ecological knowledge of seasonal fishing migration patterns and traditional resource management practices."
+  path: https://rpubs.com/seamusmurphy/mapping-endorheic-wetland-dynamics
+  image: ../assets/PNG/Wetland-Mapping-icon-b.png  
+
+- title: '<span style="color: rgb(96, 165, 250); font-weight: 600;">Verification:</span> ART-TREES Demo Repository'
+  date: 2025-08-11
+  description: "Git Control for Reproducible GHG Calculations."
+  path: https://seamusrobertmurphy.quarto.pub/art-trees-submission/
+  description: "Demonstration repository showcasing version control best practices for greenhouse gas calculation workflows under ART-TREES methodology. Features standardized Git workflows, automated testing frameworks, and documentation templates ensuring reproducible carbon accounting processes. Includes branching strategies for collaborative development, continuous integration pipelines for calculation validation, and release management procedures supporting transparent and auditable REDD+ project development."
+  image: ../assets/PNG/ART-TREES-repo-layout.png  
+
+- title: '<span style="color: rgb(96, 165, 250); font-weight: 600;">Verification:</span> ART-TREES Allometry Validation'
+  date: 2025-02-16
+  description: "Validation and calibration procedures for allometric biomass models compliant with ART-TREES requirements. Technical guidance in model selection methodology for avoiding Types 1-4 statistical errors, bias corrections and hyperparameter tuning."
+  path: https://seamusrobertmurphy.quarto.pub/art-trees-allometry-validation
+  image: ../assets/PNG/ART-TREES-allometry.png  
+
+- title: '<span style="color: rgb(96, 165, 250); font-weight: 600;">Verification:</span> ART-TREES Monte Carlo Tools'
+  date: 2024-12-19
+  description: "Monte Carlo simulation methods for estimating uncertainty of REDD+ emission factors and activity data in compliance with ART-TREES Standard V2.0. Features workflows for biomass estimation uncertainty analysis, allometric model error propagation, and activity data variance assessment using 10,000-iteration simulations with 90% confidence intervals. Includes specialized modules for cross-validation bias detection, spatial uncertainty modeling, and automated uncertainty deduction calculations that also incorporate best practices from CEOS LPV Biomass Protocol."
+  path: https://rpubs.com/seamusmurphy/art-trees-monte-carlo-uncertainty
+  image: https://raw.githubusercontent.com/seamusrobertmurphy/monte-carlo-trees/refs/heads/main/animation.gif
+
+
+- title: '<span style="color: rgb(96, 165, 250); font-weight: 600;">Verification:</span> VT0007 JREDD+ Risk Mapping'
+  date: 2024-11-06
+  path: https://seamusrobertmurphy.quarto.pub/vt0007/
+  image: ../assets/PNG/VT0007-icon-z.png
+  description: "Risk assessment toolkit for Jurisdictional REDD+ programs implementing VT0007 methodology. Features geospatial analysis scripts for identifying and mapping deforestation risk factors, including proximity to infrastructure, agricultural pressure zones, and historical forest loss patterns. Integrates multiple satellite data sources (Landsat, Sentinel-2, MODIS) with socioeconomic indicators to generate probabilistic risk surfaces supporting strategic intervention planning and monitoring system design for jurisdictional-scale forest conservation programs."
+
+- title: '<span style="color: rgb(96, 165, 250); font-weight: 600;">Verification:</span> VM0048 Jurisdictional REDD+ Methodology'
+  path: https://seamusrobertmurphy.quarto.pub/vm0048/
+  image: ../assets/PNG/VM0047-icon-c.png
+  description: "Guide to Verra’s VM0048 consolidated methodology and VMD0055-compliant emissions reporting, including baseline calculation, jurisdictional deforestation risk mapping, and leakage analysis."
+  date: 2025-01-04
+
+- title: '<span style="color: rgb(96, 165, 250); font-weight: 600;">Verification:</span> VM0047 ARR Project Scoping'
+  path: https://rpubs.com/seamusmurphy/land-eligibility-hazard-degradation-check-VM0047
+  image: ../assets/PNG/VM0047-icon-c.png
+  description: "Feasibility assessment framework for Afforestation, Reforestation, and Revegetation (ARR) projects under VM0047 methodology. This resource provides standardized protocol for evaluating land degradation, forest change detection algorithms, and baseline establishment procedures, including data processing workflows for satellite imagery analysis and soil carbon stock potential to support project developers in initial feasibility screening."
+  date: 2024-10-17
+  
+- title: '<span style="color: rgb(96, 165, 250); font-weight: 600;">Verification:</span> VM0010 IFM Reporting Template'
+  path: https://seamusrobertmurphy.github.io/VM0010-starter-template/
+  description: "Reporting template for Improved Forest Management (IFM) projects under VM0010 methodology. Provides standardized procedures for forest inventory data collection, carbon stock calculations, emission reduction quantification, and MRV reporting requirements. Includes field measurement protocols, allometric equation selection guidance, statistical sampling design, and automated calculation templates ensuring VCS compliance for commercial forest carbon projects."
+  image: ../assets/PNG/VM0010-icon.png
+  date: 2024-11-04
+
+- title: '<span style="color: rgb(96, 165, 250); font-weight: 600;">Wildfire</span> Fuel Typing: Revised Workflow Compliant with Updated CFFDRS Methodology (V2.0)'
+  date: 2022-02-24
+  path: https://seamusrobertmurphy.quarto.pub/cffdrs/
+  description: "Operational workflow for wildfire risk mapping and fuel typing in accordance with the updated Canadian Forest Fire Danger Rating System (V2.0) for British Columbia's Okanagan Watershed. This reproducible workflow integrates satellite-derived elevation data, gridded climate variables from Environment and Climate Change Canada weather stations, and BC Vegetation Resource Inventory (VRI) datasets. The methodology processes Digital Elevation Models, applies Inverse Distance Weighting interpolation for climate data, and implements Wotton and Beverly's stand-adjusted fine-fuel moisture content model. Using the `cffdrs` R package, the workflow generates Fire Weather Index (`FWI`), Initial Spread Index (`ISI`), and Build-up Index (`BUI`) raster outputs. Features comprehensive fuel type classification based on species composition and stand density, producing Head Fire Index and Fire Intensity predictions to support operational fire management teams, researchers, and wildfire risk assessment applications."
+  image:  https://raw.githubusercontent.com/seamusrobertmurphy/forest-fire-risk-cffdrs/main/assets/PNG/fwi.png 
+  image-height: "60px"    
+  image-width: "60px"
+
+- title: '<span style="color: rgb(96, 165, 250); font-weight: 600;">Mapping</span>: Site Visualization'
+  date: 2024-12-04
+  path: https://seamusrobertmurphy.quarto.pub/map-templates/
+  description: "Suite of every-day maps used operational site mapping designed to support fieldwork and environmental analysis activities. This resource includes topographic, hydrographic, demographic, and watershed cartographic tools. Site maps were designed for supporting boundary identification and field access, with Locator inset maps also provided for helping users within quickly orientate themselves within local and national landscapes. A final section was added showcasing 3-D mapping of watershed delineation and topopgrahy useful for environmental impact assessments between upstream and downstream sites. These templates serve as practical tools for researchers, environmental analysts, and field professionals requiring standardized every-day mapping solutions for site orientation and operational planning."
+  image: https://raw.githubusercontent.com/seamusrobertmurphy/web-bio/refs/heads/main/assets/PNG/07-map-grid.png
+
+- title: '<span style="color: rgb(96, 165, 250); font-weight: 600;">Mapping</span> Surveys: Open Source ODK Survey Build & Deployment across Egypt;s Lower Delta'
+- title: ": Open Source Build"
+  date: 2018-02-05
+  description: "Open-source mobile data collection framework built on Open Data Kit (GeoODK) architecture for socioeconomic field surveys. Provides customizable survey templates, GPS-enabled data collection forms, with automated quality control protocols, multilingual support, and integrated statistical sampling tools using android mobile devices"
+  path: https://eu.kobotoolbox.org/#/forms/ajw7YvwXFgCgVaaAiz9Xrm/data/map 
+  image: ../assets/PNG/GeoODK-icon.png
+
+  

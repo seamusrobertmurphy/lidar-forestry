@@ -1,20 +1,132 @@
 /*-- scss:defaults --*/
 
-// Sass Variables
-// https://quarto.org/docs/output-formats/html-themes.html#sass-variables
-// https://github.com/twbs/bootstrap/blob/main/scss/_variables.scss
+/* =================================== */
+/* BRAND COLORS                        */
+/* =================================== */
+$brand-blue: #2563eb;
+$brand-sage-green: #10b981;
+$brand-slate: #64748b;
 
-/* Colors */
-$body-bg: #FFFFFF;
+/* =================================== */
+/* BASE COLORS                         */
+/* =================================== */
 $body-color: rgb(55, 58, 60);
 $link-color: rgb(39, 128, 227);
 
-/* Fonts */
+/* =================================== */
+/* TYPOGRAPHY VARIABLES                */
+/* =================================== */
 $font-family-sans-serif: "Source Sans Pro", -apple-system, "system-ui", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
-$font-size-root: 17px;
-$toc-font-size: 14px;
 
-/* Code Chunk */
-$code-font-size: 11px;
-//$code-block-border-left: #2d1283;
-//$code-block-bg: #160941;
+/* Root font sizes */
+$font-size-root: 14px;
+$toc-font-size: 11px;
+
+/* Code styling */
+$code-font-size: 10px;
+
+
+/*-- scss:rules --*/
+
+
+/* =================================== */
+/* GENERAL TYPOGRAPHY                  */
+/* =================================== */
+
+/* All headings: unified size and styling */
+h1, h2, h3, h4, h5, h6 {
+  font-family: "Open Sans", sans-serif !important;
+  font-weight: 600 !important;
+  font-size: 1.2rem !important;
+  line-height: 1.3 !important;
+  margin-top: 1.5rem !important;
+  margin-bottom: 0.75rem !important;
+  color: $brand-sage-green !important;
+}
+
+/* Page title (h1.title) - larger and distinctive */
+h1.title {
+  color: $brand-sage-green !important;
+  font-size: 1.8rem !important;
+  margin-bottom: 1rem !important;
+}
+
+/* Section headings - color variations */
+h2 {
+  color: $brand-blue !important;
+  font-size: 1.3rem !important;
+  margin-top: 2rem !important;
+  margin-bottom: 1rem !important;
+}
+
+h3 {
+  color: $brand-sage-green !important;
+  font-size: 1.2rem !important;
+  margin-top: 1.5rem !important;
+  margin-bottom: 0.75rem !important;
+}
+
+/* =================================== */
+/* LINK STYLING                        */
+/* =================================== */
+a {
+  color: $link-color;
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* =================================== */
+/* BODY TEXT                           */
+/* =================================== */
+body {
+  font-size: $font-size-root;
+  line-height: 1.6;
+}
+
+p {
+  line-height: 1.6;
+  margin-bottom: 1rem;
+}
+
+/* =================================== */
+/* CODE BLOCKS                         */
+/* =================================== */
+code {
+  font-size: $code-font-size;
+}
+
+pre code {
+  font-size: $code-font-size;
+  line-height: 1.4;
+}
+
+/* =================================== */
+/* TABLE OF CONTENTS                   */
+/* =================================== */
+.sidebar nav[role="doc-toc"] {
+  font-size: $toc-font-size;
+}
+
+/* =================================== */
+/* RESPONSIVE TYPOGRAPHY               */
+/* =================================== */
+@media (max-width: 768px) {
+  h1.title {
+    font-size: 1.5rem !important;
+  }
+  
+  h2 {
+    font-size: 1.2rem !important;
+  }
+  
+  h3 {
+    font-size: 1.1rem !important;
+  }
+  
+  body {
+    font-size: 13px;
+  }
+}

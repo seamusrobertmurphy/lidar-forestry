@@ -1,0 +1,21 @@
+---
+title: "Additional Resources"
+listing:
+  contents: learning.yml
+  type: default
+  sort: false
+---
+
+<style>
+img {
+  max-width: 300px !important;
+  max-height: 150px !important;
+}
+.listing-description {
+  color: #374151 !important;
+}
+</style>
+
+::: {#learning}
+:::
+

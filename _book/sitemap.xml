@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://seamusrobertmurphy.quarto.pub/lidar-forestry/index.html</loc>
+    <lastmod>2025-10-08T00:44:12.942Z</lastmod>
+  </url>
+  <url>
+    <loc>https://seamusrobertmurphy.quarto.pub/lidar-forestry/point-cloud/index.html</loc>
+    <lastmod>2025-10-08T00:49:47.902Z</lastmod>
+  </url>
+  <url>
+    <loc>https://seamusrobertmurphy.quarto.pub/lidar-forestry/stem-detect/index.html</loc>
+    <lastmod>2025-10-08T04:38:13.554Z</lastmod>
+  </url>
+  <url>
+    <loc>https://seamusrobertmurphy.quarto.pub/lidar-forestry/canopy-height/index.html</loc>
+    <lastmod>2025-10-08T05:22:55.387Z</lastmod>
+  </url>
+  <url>
+    <loc>https://seamusrobertmurphy.quarto.pub/lidar-forestry/biomass-model/index.html</loc>
+    <lastmod>2025-10-07T21:36:57.383Z</lastmod>
+  </url>
+  <url>
+    <loc>https://seamusrobertmurphy.quarto.pub/lidar-forestry/resources/index.html</loc>
+    <lastmod>2025-10-07T21:39:03.785Z</lastmod>
+  </url>
+</urlset>

@@ -1,0 +1,566 @@
+---
+title: "Biomass Estimation"
+date: 2022-02-24
+author: 
+  - name: Seamus Murphy
+    orcid: 0000-0002-1792-0351 
+    email: seamusrobertmurphy@gmail.com
+format: 
+  html:
+    toc: true
+    toc-location: right
+    toc-title: "**Contents**"
+    toc-depth: 5
+    toc-expand: 4
+    number-sections: false
+    theme: 
+      - default
+      - ../styles.scss
+    embed-resources: false
+    
+engine: knitr
+bibliography: ../references.bib
+csl: ../apa.csl
+---
+
+------------------------------------------------------------------------
+
+```{r setup}
+#| warning: false
+#| message: false
+#| error: false
+#| echo: false
+
+
+pacman::p_load(
+  "curl", 
+  "dplyr",
+	"fontawesome",
+  "htmltools", "httr2",
+  "janitor",
+  "kableExtra", "knitr",
+  "lidR", "lutz", 
+  "openxlsx",
+  "PROJ",
+  "raster", "rasterVis", "reproj",
+  "sf",
+  "tinytex", "tmap", "tmaptools", "terra",
+  "useful", "usethis", 
+  "webshot", "webshot2", "weathercan")
+
+knitr::opts_chunk$set(
+  echo = TRUE, 
+  message = FALSE, 
+  warning = FALSE,
+  error = TRUE, 
+  comment = NA, 
+  tidy.opts = list(
+    width.cutoff = 60)
+  ) 
+
+#knit_hooks$set(webgl = hook_webgl)
+#knit_hooks$set(rgl.static = hook_rgl)
+sf::sf_use_s2(use_s2 = FALSE)
+
+options(htmltools.dir.version = FALSE, 
+        htmltools.preserve.raw = FALSE,
+				tinytex.verbose = TRUE
+				)
+
+tmap_options(max.raster = c(plot = 9500000, view = 10000000)) # allows large raster rendering
+```
+
+## Overview
+
+LiDAR-derived metrics enable wall-to-wall biomass and volume predictions when calibrated with field inventory data. This chapter demonstrates the complete workflow: covariate preparation, species classification, masking, model training, and spatial prediction for whole stem volume per hectare (WSVHA) estimates.
+
+------------------------------------------------------------------------
+
+## 1. Covariate Preparation
+
+### Terrain Derivatives
+
+Derive slope and aspect from elevation raster. Transform aspect to northness (cosine) and eastness (sine) to avoid circular variable issues.
+
+```{r}
+#| eval: false
+
+# Load elevation raster (from DTM generation)
+elev <- rast("elev_raster_100m.tif")
+crs(elev) <- "epsg:3005"
+
+# Derive slope and aspect
+slope <- terrain(elev, v = "slope", unit = "degrees", neighbors = 8)
+aspect <- terrain(elev, v = "aspect", unit = "degrees", neighbors = 8)
+
+# Transform aspect to linear components
+asp_cos <- cos((aspect * pi) / 180)  # Northness
+asp_sin <- sin((aspect * pi) / 180)  # Eastness
+
+# Aggregate to target resolution
+elev <- aggregate(elev, fact = 100, fun = mean)
+slope <- resample(slope, elev, method = "bilinear")
+asp_cos <- resample(asp_cos, elev, method = "bilinear")
+asp_sin <- resample(asp_sin, elev, method = "bilinear")
+```
+
+### Canopy Height Aggregation
+
+```{r}
+#| eval: false
+
+# Load and aggregate CHM
+lead_htop <- rast("lead_htop_raster.tif")
+crs(lead_htop) <- "epsg:3005"
+lead_htop <- aggregate(lead_htop, fact = 100, fun = mean)
+lead_htop <- resample(lead_htop, elev, method = "bilinear")
+
+# Apply vegetation height threshold
+lead_htop[lead_htop < 1.3] <- NA
+```
+
+**Aggregation considerations:**
+
+-   100x aggregation (1m → 100m) matches field plot scale
+-   Mean aggregation appropriate for height metrics
+-   Alternative: 95th percentile for dominant height
+
+------------------------------------------------------------------------
+
+## 2. Species Classification
+
+### VRI-Based Species Raster
+
+```{r}
+#| eval: false
+
+# Import VRI data
+vri_sf <- read_sf("vri_tcc_lquan_20220627.shp")
+
+# Filter to target species
+vri_species <- filter(vri_sf, 
+  SPECIES_CD %in% c('PL', 'PLI', 'FD', 'FDI', 
+                    'SB', 'SE', 'SW', 'SX', 
+                    'CW', 'HW', 'BL', 'LW'))
+
+# Recode to numeric classes
+vri_species$species_class <- recode(vri_species$SPECIES_CD,
+  PL = 0, PLI = 0,           # Pine
+  SB = 1, SE = 1, SW = 1, SX = 1,  # Spruce
+  FD = 2, FDI = 2,           # Douglas-fir
+  CW = 3,                    # Western redcedar
+  HW = 4,                    # Western hemlock
+  BL = 5,                    # Subalpine fir
+  LW = 6)                    # Western larch
+
+# Convert to raster
+vri_species_sf <- vri_species["species_class"]
+species_class_rast <- rasterize(vect(vri_species_sf), elev, 
+                                 field = "species_class", 
+                                 touches = TRUE)
+species_class_rast <- resample(species_class_rast, elev, method = "near")
+```
+
+**Species coding rationale:**
+
+-   Numeric classes enable regression models
+-   Grouped by similar allometry (e.g., all spruce species)
+-   Near-neighbor resampling preserves categorical data
+
+------------------------------------------------------------------------
+
+## 3. Masking Workflows
+
+### Disturbance and Infrastructure Masks
+
+```{r}
+#| eval: false
+
+# Import mask layers
+mask_burn <- read_sf("TCC_Burn_Severity_2017-2021.shp")
+mask_roads <- read_sf("TCC_Roads.shp")
+mask_clearcut <- read_sf("RSLT_CCRES_CLEAR.shp")
+mask_blocks <- read_sf("TCC_Blocks_Join.shp")
+
+# Buffer roads
+mask_roads <- st_buffer(mask_roads, dist = 15, 
+                        nQuadSegs = 5, 
+                        endCapStyle = "ROUND")
+
+# Filter high-severity burns only
+mask_burn <- filter(mask_burn, BurnSev == 'High')
+
+# Combine all masks
+masks_combined <- bind_rows(
+  mask_burn, mask_roads, mask_clearcut, mask_blocks
+)
+
+# Rasterize masks
+masks_rast <- rasterize(vect(masks_combined), elev, touches = TRUE)
+writeRaster(masks_rast, "mask_raster_100m_allAreas.tif", overwrite = TRUE)
+```
+
+### Apply Masking
+
+```{r}
+#| eval: false
+
+# Align all rasters
+lead_htop <- resample(lead_htop, elev)
+masks_rast <- resample(masks_rast, elev)
+species_class_rast <- resample(species_class_rast, elev)
+
+# Mask by disturbance (inverse=TRUE removes masked areas)
+lead_htop_masked <- mask(lead_htop, masks_rast, inverse = TRUE)
+elev_masked <- mask(elev, masks_rast, inverse = TRUE)
+slope_masked <- mask(slope, masks_rast, inverse = TRUE)
+asp_cos_masked <- mask(asp_cos, masks_rast, inverse = TRUE)
+asp_sin_masked <- mask(asp_sin, masks_rast, inverse = TRUE)
+
+# Mask by species (inverse=FALSE keeps only vegetated areas)
+lead_htop_masked <- mask(lead_htop_masked, species_class_rast, inverse = FALSE)
+elev_masked <- mask(elev_masked, species_class_rast, inverse = FALSE)
+slope_masked <- mask(slope_masked, species_class_rast, inverse = FALSE)
+asp_cos_masked <- mask(asp_cos_masked, species_class_rast, inverse = FALSE)
+asp_sin_masked <- mask(asp_sin_masked, species_class_rast, inverse = FALSE)
+species_class_masked <- mask(species_class_rast, masks_rast, inverse = TRUE)
+```
+
+**Critical:** Always mask by disturbances first, then by species to avoid including burned/harvested areas.
+
+------------------------------------------------------------------------
+
+## 4. Covariate Stack Assembly
+
+```{r}
+#| eval: false
+
+# Rename layers for model compatibility
+names(elev_masked) <- "elev"
+names(slope_masked) <- "slope"
+names(asp_cos_masked) <- "asp_cos"
+names(asp_sin_masked) <- "asp_sin"
+names(lead_htop_masked) <- "lead_htop"
+names(species_class_masked) <- "species_class"
+
+# Convert to raster package format (for model prediction)
+elev_raster <- raster(elev_masked)
+slope_raster <- raster(slope_masked)
+asp_cos_raster <- raster(asp_cos_masked)
+asp_sin_raster <- raster(asp_sin_masked)
+lead_htop_raster <- raster(lead_htop_masked)
+species_class_raster <- raster(species_class_masked)
+
+# Stack covariates
+covs_stack <- stack(
+  elev_raster, 
+  slope_raster, 
+  asp_cos_raster, 
+  asp_sin_raster, 
+  lead_htop_raster, 
+  species_class_raster
+)
+
+# Verify stack
+names(covs_stack)
+plot(covs_stack)
+```
+
+------------------------------------------------------------------------
+
+## 5. Field Data Preparation
+
+### Import and Clean PSP Data
+
+```{r}
+#| eval: false
+
+# Import permanent sample plot data
+faib_psp <- read.csv("FAIB_PSP_20211028.csv")
+
+# Filter to utilization standard and target species
+faib_psp <- subset(faib_psp, util == '12.5')
+faib_psp <- subset(faib_psp, 
+  spc_live1 %in% c('PL', 'PLI', 'FD', 'FDI', 
+                   'SB', 'SE', 'SW', 'SX', 
+                   'CW', 'HW', 'BL', 'LW'))
+
+# Create species class variable
+faib_psp$species_class <- recode(faib_psp$spc_live1,
+  PL = 0, PLI = 0, 
+  SB = 1, SE = 1, SX = 1, 
+  FD = 2, FDI = 2, 
+  CW = 3, HW = 4, BL = 5, LW = 6)
+
+# Transform aspect
+faib_psp$asp_cos <- cos((faib_psp$aspect * pi) / 180)
+faib_psp$asp_sin <- sin((faib_psp$aspect * pi) / 180)
+```
+
+### Data Quality Control
+
+``` r
+# Remove problematic observations
+faib_psp$elev[faib_psp$elev <= 0] <- NA
+faib_psp$slope[faib_psp$slope <= 0] <- NA
+faib_psp$lead_htop[faib_psp$lead_htop < 1.3] <- NA
+faib_psp$wsvha_L[faib_psp$wsvha_L <= 0] <- NA
+
+# Remove outliers (stems/ha > 864 = 3 SD above mean)
+faib_psp <- subset(faib_psp, stemsha_L < 864)
+
+# Subset to model variables
+faib_vri_df <- faib_psp[c("elev", "slope", "asp_cos", "asp_sin", 
+                          "lead_htop", "species_class", "wsvha_L")]
+faib_vri_df <- na.omit(faib_vri_df)
+```
+
+------------------------------------------------------------------------
+
+## 6. Bootstrapping for Distribution Matching
+
+Match field data distribution to raster covariate distribution to reduce prediction bias.
+
+```{r}
+#| eval: false
+
+# Extract raster distribution
+lead_htop_df <- as.data.frame(rasterToPoints(lead_htop_raster))
+
+# Create density function for weighting
+dens_fun <- approxfun(density(lead_htop_df$lead_htop, adjust = 0.8))
+
+# Bootstrap sample
+B <- 1000  # Number of bootstrap samples
+n <- 4     # Sample multiplier
+
+faib_vri_boot <- sample_n(faib_vri_df, 
+                          B * n, 
+                          weight_by = dens_fun(faib_vri_df$lead_htop), 
+                          replace = TRUE)
+
+# Compare distributions
+par(mfrow = c(1, 2))
+truehist(faib_vri_df$lead_htop, main = "Original FAIB")
+truehist(faib_vri_boot$lead_htop, main = "Bootstrapped FAIB")
+```
+
+**Bootstrapping rationale:** Reduces systematic bias when field plots under-represent certain height classes present in raster data.
+
+------------------------------------------------------------------------
+
+## 7. Train-Test Split
+
+```{r}
+#| eval: false
+
+# 80-20 split
+train_split <- createDataPartition(faib_vri_boot$wsvha_L, p = 0.80, list = FALSE)
+
+train <- faib_vri_boot[train_split, ]
+test <- faib_vri_boot[-train_split, ]
+
+# Separate predictors and response
+X_train <- train[, -7]
+y_train <- train[, 7]
+X_test <- test[, -7]
+y_test <- test[, 7]
+```
+
+------------------------------------------------------------------------
+
+## 8. Model Training
+
+### Random Forest Regression
+
+```{r}
+#| eval: false
+
+library(e1071)
+library(randomForest)
+library(caret)
+
+# Hyperparameter tuning
+tuneResult_rf <- tune.randomForest(
+  X_train, y_train,
+  mtry = c(2:6),
+  ntree = 50,
+  tunecontrol = tune.control(sampling = "cross", cross = 10),
+  preProcess = c('YeoJohnson', 'scale', 'center', 'corr')
+)
+
+# Extract best model
+tunedModel_rf <- tuneResult_rf$best.model
+
+# Predict on test set
+rf_predictions <- predict(tunedModel_rf, X_test)
+
+# Performance metrics
+rf_mae <- MAE(rf_predictions, y_test)
+rf_rmse <- RMSE(rf_predictions, y_test)
+rf_r2 <- R2(rf_predictions, y_test)
+
+cat("MAE:", round(rf_mae, 2), "m³/ha\n")
+cat("RMSE:", round(rf_rmse, 2), "m³/ha\n")
+cat("R²:", round(rf_r2, 3), "\n")
+
+# Save model
+save(tunedModel_rf, file = "wsvha_model_rf_bootstrapped.RData")
+```
+
+**Preprocessing transformations:**
+
+-   `YeoJohnson`: Power transformation for skewed predictors
+-   `center`: Mean-centering (subtract mean)
+-   `scale`: Standardization (divide by SD)
+-   `corr`: Remove highly correlated predictors (\|r\| \> 0.9)
+
+### Support Vector Machine
+
+```{r}
+#| eval: false
+
+# SVM with radial kernel
+tuneResult_svm <- tune(svm, X_train, y_train,
+  ranges = list(
+    cost = c(1, 5, 7, 15, 20),
+    gamma = 2^(-1:1)
+  ),
+  tunecontrol = tune.control(cross = 10),
+  preProcess = c("YeoJohnson", "center", "scale")
+)
+
+tunedModel_svm <- tuneResult_svm$best.model
+
+# Predict and evaluate
+svm_predictions <- predict(tunedModel_svm, X_test)
+svm_mae <- MAE(svm_predictions, y_test)
+svm_rmse <- RMSE(svm_predictions, y_test)
+svm_r2 <- R2(svm_predictions, y_test)
+```
+
+------------------------------------------------------------------------
+
+## 9. Spatial Prediction
+
+### Generate WSVHA Raster
+
+```{r}
+#| eval: false
+
+# Predict across entire raster stack
+wsvha_raster <- raster::predict(covs_m1_allSpeciesAreas, tunedModel_rf_m1_full)
+
+# Remove negative predictions (artifacts from extrapolation)
+wsvha_raster$layer[wsvha_raster$layer <= 0] <- 0
+
+# Export
+writeRaster(wsvha_raster,
+            filename = "wsvha_model1_randomForest_bootstrapped_demBased_100m_allSpeciesAreas.tif",
+            overwrite = TRUE)
+
+# Visualize
+plot(wsvha_raster, 
+     main = "WSVHA for All-Species Operating Areas: Random Forest",
+     cex.main = 0.8,
+     maxpixels = 22000000)
+
+hist(wsvha_raster,
+     main = "WSVHA Distribution: Random Forest",
+     cex.main = 0.8,
+     maxpixels = 22000000)
+```
+
+**Output interpretation:**
+
+-   Mean WSVHA: Typically 150-300 m³/ha for mature BC forests
+-   Standard deviation: 50-100 m³/ha reflects stand variability
+-   Negative values indicate model extrapolation beyond training range
+
+------------------------------------------------------------------------
+
+## 10. Model Performance Evaluation
+
+### Cross-Validation Metrics
+
+```{r}
+#| eval: false
+
+# Full dataset performance
+R2(tunedModel_rf_m1, faib_vri_true_m1_df$wsvha_L)
+MAE(tunedModel_rf_m1, faib_vri_true_m1_df$wsvha_L)
+RMSE(tunedModel_rf_m1, faib_vri_true_m1_df$wsvha_L)
+
+# Test set performance
+MAE(tunedModel_rf_m1_test, test_m1$wsvha_L)
+RMSE(tunedModel_rf_m1_test, test_m1$wsvha_L)
+
+# Print results
+cat("Full Dataset R²:", round(R2(tunedModel_rf_m1, faib_vri_true_m1_df$wsvha_L), 3), "\n")
+cat("Full Dataset RMSE:", round(RMSE(tunedModel_rf_m1, faib_vri_true_m1_df$wsvha_L), 2), "m³/ha\n")
+cat("Test Set RMSE:", round(RMSE(tunedModel_rf_m1_test, test_m1$wsvha_L), 2), "m³/ha\n")
+```
+
+**Expected performance:**
+
+-   R²: 0.65-0.75 (typical for LiDAR biomass models)
+-   RMSE: 40-60 m³/ha
+-   MAE: 30-45 m³/ha
+
+**Model validation thresholds:**
+
+-   Acceptable: RMSE \< 20% of mean WSVHA
+-   Good: RMSE \< 15% of mean WSVHA
+-   Excellent: RMSE \< 10% of mean WSVHA
+
+------------------------------------------------------------------------
+
+## 11. Validation Sites
+
+### Quesnel Lake Developed Blocks
+
+Independent validation using recently harvested blocks where pre-harvest inventory exists.
+
+```{r}
+#| eval: false
+
+# Apply model to validation area
+wsvha_quesnel <- raster::predict(covs_m1_quesnel, tunedModel_rf_m1_full)
+wsvha_quesnel$layer[wsvha_quesnel$layer <= 0] <- 0
+
+# Export
+writeRaster(wsvha_quesnel,
+            "wsvha_model1_randomForest_bootstrapped_demBased_100m_quesnelANDdevBlocks.tif",
+            overwrite = TRUE)
+
+# Visualize
+plot(wsvha_quesnel,
+     main = "Quesnel WSVHA: Random Forest",
+     cex.main = 0.8,
+     maxpixels = 22000000)
+
+hist(wsvha_quesnel,
+     main = "Quesnel WSVHA: Random Forest",
+     cex.main = 0.8,
+     maxpixels = 22000000)
+```
+
+**Validation strategy:**
+
+-   Compare predictions to pre-harvest cruise data
+-   Calculate block-level bias (systematic over/under-estimation)
+-   Assess prediction variance within homogeneous stands
+
+
+##### References
+
+::: {#refs}
+:::
+
+------------------------------------------------------------------------
+
+##### Runtime Log
+
+```{r}
+devtools::session_info()
+```

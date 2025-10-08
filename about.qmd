@@ -2,8 +2,17 @@
 title: "About"
 ---
 
-About this site
+## Seamus Murphy
+**REDD+ Consultant | Registered Forester**
 
-```{r}
-1 + 1
-```
+![](assets/PNG/profile.jpg){fig-alt="Photo of Seamus Murphy" width=300}
+
+[{{< fa brands github >}} GitHub](https://github.com/seamusrobertmurphy) | [{{< fa brands linkedin >}} LinkedIn](https://linkedin.com/in/seamusrobertmurphy)
+
+---
+
+**Seamus Murphy** is a forester specializing in forest mensuration and carbon verification. He holds a PhD from SOAS, University of London (2015) and an MSc in Environmental Forestry from Bangor University (2019). He currently serves as a REDD+ Consultant with [Winrock International](https://winrock.org/), supporting jurisdictional and project-level carbon offset programs. His previous role as a Verification Forester involved auditing programs under ACR, ARB, and Verra standards.
+
+Murphy develops open-source tools and reproducible workflows for forest analysis and environmental monitoring, addressing the gap between methodological rigor and practical implementation. His documented protocols cover industry-standard applications in forest inventory, remote sensing, and carbon accounting ([2025a](https://seamusrobertmurphy.quarto.pub/art-trees-submission/), [2025b](https://seamusrobertmurphy.quarto.pub/vm0048/), [2025c](https://rpubs.com/seamusmurphy/art-trees-monte-carlo-uncertainty), [2022c](https://seamusrobertmurphy.quarto.pub/cffdrs/)).
+
+Technical implementations integrate LiDAR, RADAR, and multispectral imagery for forest health assessment, biomass estimation, and carbon verification through R and Python environments ([2023a](https://rpubs.com/seamusmurphy/gov_sk_tree_height_variability), [2024a](https://rpubs.com/seamusmurphy/mapping-endorheic-wetland-dynamics)). Field methodologies include protocols for in-situ data collection, GPS accuracy assessment, and open-source survey systems ([2019](https://eu.kobotoolbox.org/#/forms/ajw7YvwXFgCgVaaAiz9Xrm/data/map), [2021a](https://seamusmurphy.shinyapps.io/shiny-project-V8/), [2021b](https://drive.google.com/file/d/126oyAzNCa386aIZLus7oO3_kk9PRmnAd/view?usp=sharing), [2022a](https://viewscreen.githubusercontent.com/view/pdf?browser=safari&bypass_fastly=true&color_mode=dark&commit=9a09556452d67378b9d3657d4ba537993426889a&device=unknown_device&docs_host=https%3A%2F%2Fdocs.github.com&enc_url=68747470733a2f2f7261772e67697468756275736572636f6e74656e742e636f6d2f7365616d7573726f626572746d75727068792f4750532d747261696e696e672d6d6174657269616c2f396130393535363435326436373337386239643336353764346261353337393933343236383839612f475053253230534f502532302d253230526f6164253230537572766579253230696e253230455352492532304669656c644d6170732e706466&link_underline_enabled=true&logged_in=true&nwo=seamusrobertmurphy%2FGPS-training-material&path=GPS+SOP+-+Road+Survey+in+ESRI+FieldMaps.pdf&platform=mac&repository_id=691993657&repository_type=Repository&version=18#56d1471b-3313-4786-9de3-4b7cd916e501), [2022b](https://drive.google.com/file/d/1JKMX_JB21j3FkHIiZ1dzqFHFGgdaIdgb/view?usp=sharing)).

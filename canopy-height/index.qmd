@@ -1,0 +1,235 @@
+---
+title: "Canopy Height"
+date: 2022-02-24
+author: 
+  - name: Seamus Murphy
+    orcid: 0000-0002-1792-0351 
+    email: seamusrobertmurphy@gmail.com
+format: 
+  html:
+    toc: true
+    toc-location: right
+    toc-title: "**Contents**"
+    toc-depth: 5
+    toc-expand: 4
+    number-sections: false
+    theme: 
+      - default
+      - ../styles.scss
+    embed-resources: false
+    
+engine: knitr
+bibliography: ../references.bib
+csl: ../apa.csl
+---
+
+------------------------------------------------------------------------
+
+```{r setup}
+#| warning: false
+#| message: false
+#| error: false
+#| echo: false
+
+
+pacman::p_load(
+  "curl", 
+  "dplyr",
+	"fontawesome",
+  "htmltools", "httr2",
+  "janitor",
+  "kableExtra", "knitr",
+  "lidR", "lutz", 
+  "openxlsx",
+  "PROJ",
+  "raster", "rasterVis", "reproj",
+  "sf",
+  "tinytex", "tmap", "tmaptools", "terra",
+  "useful", "usethis", 
+  "webshot", "webshot2", "weathercan")
+
+knitr::opts_chunk$set(
+  echo = TRUE, 
+  message = FALSE, 
+  warning = FALSE,
+  error = TRUE, 
+  comment = NA, 
+  tidy.opts = list(
+    width.cutoff = 60)
+  ) 
+
+#knit_hooks$set(webgl = hook_webgl)
+#knit_hooks$set(rgl.static = hook_rgl)
+sf::sf_use_s2(use_s2 = FALSE)
+
+options(htmltools.dir.version = FALSE, 
+        htmltools.preserve.raw = FALSE,
+				tinytex.verbose = TRUE
+				)
+
+tmap_options(max.raster = c(plot = 9500000, view = 10000000)) # allows large raster rendering
+```
+
+# Overview
+
+Canopy Height Models (CHM) represent vertical distance from ground to canopy top across the landscape. CHMs derived from normalized LiDAR point clouds serve as primary inputs for tree detection, biomass estimation, and forest inventory. This chapter documents operational workflows for CHM aggregation, mosaicking across multiple operating areas, and quality control procedures.
+
+**Note:** CHMs are generated at 1m resolution during point cloud processing (Chapter 1: Point Clouds), then aggregated to match field plot scale (typically 100m).
+
+------------------------------------------------------------------------
+
+## 1. Prepare CHM
+
+Create 1m resolution CHM from normalized point clouds using triangulation.
+
+```{r}
+#| warning: false
+#| message: false
+#| error: false
+#| echo: false
+#| eval: false
+# Generate 1m CHM
+chm_1m <- lidR::grid_canopy(las_norm, res = 1, dsmtin(max_edge = 8))
+plot(chm_1m, col = height.colors(50))
+```
+
+![](/assets/PNG/stem_detect_F.png){width="100%"}
+
+------------------------------------------------------------------------
+
+## 2. Extract Dominant Height
+
+### Point Cloud Extraction
+
+Extract dominant height directly from point clouds without rasterizing. This method is slower but preserves full point information.
+
+```{r}
+#| eval: false
+# Create a 1m grid
+grid    	 = sf::st_make_grid(ttops_sf, cellsize = 1, square = TRUE)
+grid_sf    = sf::st_sf(grid_id = 1:length(grid), geometry = grid)
+ttops_grid = sf::st_join(ttops_sf, grid_sf)
+
+ttops_95h  = ttops_grid |> 
+	sf::st_drop_geometry() |> 
+	dplyr::group_by(grid_id) |>
+  summarise(
+    count = n(),
+    `95thQuantile` = quantile(Z, 0.95, na.rm = TRUE),
+    Max = max(Z, na.rm = TRUE),
+    .groups = 'drop'
+  ) |>
+  right_join(grid_sf, by = "grid_id") %>%
+  sf::st_as_sf()
+
+# Convert to raster if needed
+ttops_95h_rast <- rasterize(
+  vect(ttops_95h), 
+  rast(ext(ttops_95h), res = 1, crs = crs(ttops_95h)),
+  field = "95thQuantile"
+)
+
+
+# Plot
+plot(ttops_95h_rast, main = "95th Percentile Height")
+```
+
+![](/assets/PNG/stem_detect_G.png)
+
+------------------------------------------------------------------------
+
+### Raster Extraction
+
+Aggregate 1m CHM tiles to 30m resolution using 95th percentile statistics. This method is faster for large catalogs.
+
+```{r}
+#| eval: false
+
+# Define 95th percentile function
+quant95 <- function(x, ...) {
+    quantile(x, probs = 0.95, na.rm = TRUE)
+}
+
+# Aggregate 1m pixels to 30m using q95
+chm_95h_30m <- terra::aggregate(
+    chm_1m,
+    fact = 30,
+    fun = quant95
+)
+
+writeRaster(
+    chm_95h_30m,
+    filename = "./data/chm_95h_30m.tif",
+    overwrite = TRUE
+)
+```
+
+![](/assets/PNG/stem_detect_H.png)
+
+------------------------------------------------------------------------
+
+## 4. Validation
+
+Compare 95th percentile CHM against detected tree heights from Chapter 2.
+
+```{r}
+#| eval: true
+
+# Load stem detections and CHM
+ttops <- sf::read_sf("../stem-detect/data/ttops_100m.gpkg")
+chm_95h <- terra::rast("../stem-detect/data/chm_95h_30m.tif")
+
+# Extract CHM values at tree locations
+ttops$chm_95h <- terra::extract(chm_95h, vect(ttops))[, 2]
+
+# Statistics
+validation <- ttops %>%
+    summarise(
+        correlation = cor(Z, chm_95h, use = "complete.obs"),
+        rmse = sqrt(mean((Z - chm_95h)^2, na.rm = TRUE)),
+        mae = mean(abs(Z - chm_95h), na.rm = TRUE),
+        bias = mean(Z - chm_95h, na.rm = TRUE)
+    )
+
+print(validation) # review and revise
+```
+
+------------------------------------------------------------------------
+
+## 5. Build Mosaic
+
+Merge all operating areas into single product for Chapter 4
+
+```{r}
+#| eval: false
+
+# List all area outputs
+area_chms <- lapply(areas, function(a) {
+    raster(sprintf("outputs/chm/chm_95h_100m.tif", a))
+})
+
+# Merge
+chm_95h_final <- do.call(merge, c(area_chms, tolerance = 1))
+
+# Save for biomass modeling
+writeRaster(
+    chm_95h_final,
+    filename = "outputs/chm/chm_95h_100m_allAreas.tif",
+    overwrite = TRUE
+)
+```
+
+This raster is the dominant height input for biomass models in Chapter 4.
+
+##### References
+
+::: {#refs}
+:::
+
+------------------------------------------------------------------------
+
+##### Runtime Log
+
+```{r}
+devtools::session_info()
+```

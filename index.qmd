@@ -1,32 +1,4 @@
----
-title: "LiDAR Forest Tools & Stand Mensuration"
-date: 2022-02-24
-author: 
-  - name: Seamus Murphy
-    orcid: 0000-0002-1792-0351 
-    email: seamusrobertmurphy@gmail.com
-abstract: > 
-  "The following documents preparatory steps required to derive digital surface models, ground segmentation, and canopy layers models from a raw unprocessed, point-cloud dataset of `xyz` aerial laser scanning points as it is first received from the data providers. Data processing operations was demonstrated using the open-source `lidR` package [@lidR]."
-keywords:
-  - LiDAR processing
-  - Point-Cloud Data
-  - Ground Segmentation
-format: 
-  html:
-    toc: true
-    toc-location: right
-    toc-title: "**Contents**"
-    toc-depth: 5
-    toc-expand: 4
-    theme: [minimal, styles.scss]
-    embed-resources: true
-highlight-style: github
-df-print: kable
-bibliography: references.bib
-engine: knitr
----
-
-------------------------------------------------------------------------
+# Preface {.unnumbered}
 
 ```{r setup}
 #| warning: false
@@ -34,43 +6,81 @@ engine: knitr
 #| error: false
 #| echo: false
 
-
 pacman::p_load(
-  "academicons", 
   "curl", 
   "dplyr",
-	"fontawesome",
-  "htmltools", "httr2",
-  "janitor",
+  "fontawesome",
+  "htmltools",
   "kableExtra", "knitr",
-  "lidR", "lutz", 
-  "openxlsx",
-  "PROJ",
-  "raster", "rasterVis", "reproj",
+  "lidR", 
+  "raster", "reproj", "renv",
   "sf",
-  "tinytex", "tmap", "tmaptools", "terra",
-  "useful", "usethis", 
-  "webshot", "webshot2", "weathercan")
+  "terra", "tmap",
+  "useful")
 
 knitr::opts_chunk$set(
   echo = TRUE, 
   message = FALSE, 
   warning = FALSE,
   error = TRUE, 
-  comment = NA, 
-  tidy.opts = list(
-    width.cutoff = 60)
-  ) 
-#knit_hooks$set(webgl = hook_webgl)
-#knit_hooks$set(rgl.static = hook_rgl)
+  comment = NA)
+
 sf::sf_use_s2(use_s2 = FALSE)
-options(htmltools.dir.version = FALSE, 
-        htmltools.preserve.raw = FALSE)
-tmap_options(max.raster = c(plot = 9500000, view = 10000000)) # allows large raster rendering
+options(htmltools.dir.version = FALSE)
+tmap_options(max.raster = c(plot = 9500000, view = 10000000))
 ```
 
-To learn more about Quarto websites visit <https://quarto.org/docs/websites>.
+Airborne LiDAR is becoming a standard tool for forest inventory operations, yet the path from raw sensor data to validated forest metrics remains challenging. When LiDAR data arrives from field crews, bush pilots, or third-party providers, it typically consists of massive unclassified point clouds in .xyz or .laz format, sometimes exceeding 50 billion points, with no ground classification, height normalization, or quality control. Converting these raw data into usable forest products requires a systematic workflow spanning data preprocessing, terrain modeling, tree detection, canopy characterization, and biomass estimation.
 
-```{r}
-1 + 1
-```
+This mini-book documents a complete operational workflow for processing airborne LiDAR data for forest inventory applications. It is structured as a sequential pipeline where each chapter builds directly on outputs from the previous stage. The workflow reflects real-world forestry LiDAR projects where computational efficiency, processing time, and validation against field measurements are critical considerations.
+
+These workflows uses R and the `lidR` [@roussel2019lidr; @roussel2020] and `ForestTools` packages [@ForestTools] to demonstrate processing steps. Code examples are designed for operational use, addressing practical issues such as managing large datasets, optimizing computational performance, and handling edge effects in tiled processing. Dependencies include `sf` [@pebesma2021package; @pebesma2018simple; @pebesma2023spatial] and `terra` packages [@hijmans2023terra], used to support spatial analysis and visualization. All dependencies are declared below in environment setup chunk.
+
+------------------------------------------------------------------------
+
+# The LiDAR-to-Biomass Workflow
+
+This material was organized around the following four key stages in a lidar data processing pipeline:
+
+### Stage 1: Point Cloud Processing:
+
+Raw unclassified LiDAR data arrives containing ground, vegetation, buildings, and noise. This chapter covers importing massive point clouds, ground classification algorithms, generating digital terrain models (DTMs), normalizing heights, and preparing analysis-ready datasets. Decisions made in this early stage regarding selection of ground classification algorithms, DTM resolutions, and noise filtering, all propagate through subsequent processes. Key tip: be patient at this early stage and plan for more time than you expect to spend on it.
+
+### Stage 2: Individual Tree Detection
+
+With normalized point clouds and canopy height rasters in hand, individual tree stems can be detected and delineated. This chapter compares raster-based approaches (using canopy height models) versus point cloud-based methods (using 3D clustering). Tree detection is computationally intensive and results vary substantially by forest type, canopy closure, and point density. The output is a spatially-explicit stem map identifying tree locations and initial height estimates.
+
+### Stage 3: Canopy Height Modeling
+
+Accurate canopy height models (CHMs) are essential for forest inventory metrics. This chapter documents methods for generating CHMs from normalized point clouds, managing gaps and edge effects, smoothing while preserving canopy structure, and cross-validating outputs against field measurements. The CHM serves as the primary input for biomass modeling.
+
+### Stage 4: Biomass Estimation
+
+With validated CHMs and stem maps, aboveground biomass can be estimated. This chapter focuses on model selection, allometric equation application, bias correction, and uncertainty quantification. The goal is achieving root mean square error (RMSE) below operational thresholds while understanding model limitations across forest conditions. Model diagnostics identify when predictions fail and why.
+
+------------------------------------------------------------------------
+
+## Computational Constraints
+
+Processing a cluster of cutblocks can require a full day on high-performance systems, particularly with high point density clouds or when tiling configuration and spatial indexing are sub-optimal. The methods demonstrated prioritize handling large datasets through tiled processing, managing edge effects, and quantifying uncertainty when field validation data are sparse. Specifically, this workflow emphasizes:
+
+-   Handling datasets too large for memory
+-   Tiled processing to manage computational load
+-   Validation strategies when field data are sparse
+-   Quantifying uncertainty in derived products
+-   Identifying conditions where methods fail
+
+For peace of mind, it is worth quickly reviewing some of the core methodological assumptions and critical performance factors across the pipeline. For example, Ground classification algorithms by their nature assume terrain smoothness. This should caution the user where they notice deviations from this assumption, as it can negatively impact classification accuracy. Similarly, we should monitor performance of tree detection algorithms in areas of dense canopy, where these models have revealed weaknesses. Additionally, unconstrained biomass models tend quietly extrapolate beyond the qualitative thresholds of their training data. If undetected, this can quickly introduce significant uncertainty, making the source of the error difficult and time-consuming to trace. In this context, such errors should be treated instead as unlikely allies. As we will likely encounter downstream, understanding where these methods break down can prove to be as important as knowing where they succeed.
+
+This book is written for forestry practitioners, resource managers, and spatial analysts who need to process LiDAR data operationally. It assumes familiarity with basic R programming and forest mensuration concepts, but not prior LiDAR experience. The focus is on getting work done rather than algorithmic theory, though key methodological decisions are explained.
+
+------------------------------------------------------------------------
+
+**Note**: This is a living document updated as methods and packages evolve. Check the [GitHub repository](https://github.com/seamusrobertmurphy/lidar-forestry) for the latest version and to report issues.
+
+------------------------------------------------------------------------
+
+## References
+
+::: {#refs}
+:::
