@@ -4,15 +4,13 @@ listing:
   contents: learning.yml
   type: default
   sort: false
+page-layout: full
 ---
 
 <style>
 img {
-  max-width: 300px !important;
-  max-height: 150px !important;
-}
-.listing-description {
-  color: #374151 !important;
+  max-width: 200px !important;
+  max-height: 200px !important;
 }
 </style>
 

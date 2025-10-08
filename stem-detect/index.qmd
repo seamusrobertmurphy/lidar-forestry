@@ -78,7 +78,7 @@ It is important to include the `uniqueness` parameter in `locate_trees()` operat
 
 **Note**: Tree detection across large catalogs is the most time-intensive stage. Dense canopies and high point densities substantially increase processing time. Expect multi-hour runtimes for operational-scale projects.
 
-## 1. Point Cloud Method
+## 2.1 Point Cloud Method
 
 The local maxima filter (`lmf()`) algorithm identifies tree tops directly from normalized point clouds[^index-1] without rasterization. For each point, the algorithm analyzes neighborhood points within a specified radius to determine if the point represents a local maximum.
 
@@ -171,7 +171,7 @@ plot(st_geometry(ttops_sf["treeID"]), add=TRUE, cex = 0.5,
 ![Check Check 1](../assets/PNG/unnamed-chunk-3-1-window-function.png){alt="Check Check 1" style="float: left; margin-right: 2%;" width="58%"} ![Chunk Check 2](/assets/PNG/stem_detect_B.png){alt="Chunk Check 2" style="float: left;" width="39%"}
 :::
 
-## 2. Rasterized Method
+## 2.2 Rasterized Method
 
 CHM-based detection is faster than point cloud methods due to reduced data volume, but results depend on CHM resolution, interpolation algorithm, and post-processing steps.
 
@@ -195,7 +195,7 @@ plot(st_geometry(ttops_chm), add=TRUE, pch=8)
 
 ------------------------------------------------------------------------
 
-## 3. Crown Segmentation
+## 2.3 Crown Segmentation
 
 Crown delineation assigns tree IDs to individual points or pixels using detected tree tops as seeds. Using detected tree tops as input, crown boundaries are delineated with Dalponte's algorithm [@dalponte2016tree]. The algorithm initiates region-growing from each tree top, expanding outward until crown boundaries are defined by local minima in the CHM. The result is convex polygons representing individual crown extents.
 
@@ -217,7 +217,7 @@ plot(crowns)
 ![crown segmentations](/assets/PNG/stem_detect_D.png){alt="Check Check 1" style="float: left; margin-right: 2%;" width="55%"} ![crown delineation](/assets/PNG/stem_detect_E.png){alt="Chunk Check 2" style="float: left;" width="42.5%"}
 :::
 
-## 4. Validation
+## 2.4 Validation
 
 Detection accuracy varies by forest structure and parameterization. The following is provided as a quick and easy check.
 

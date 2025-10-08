@@ -78,7 +78,7 @@ Canopy Height Models (CHM) represent vertical distance from ground to canopy top
 
 ------------------------------------------------------------------------
 
-## 1. Prepare CHM
+## 3.1 Prepare CHM
 
 Create 1m resolution CHM from normalized point clouds using triangulation.
 
@@ -97,7 +97,7 @@ plot(chm_1m, col = height.colors(50))
 
 ------------------------------------------------------------------------
 
-## 2. Extract Dominant Height
+## 3.2 Extract Dominant Height
 
 ### Point Cloud Extraction
 
@@ -168,7 +168,7 @@ writeRaster(
 
 ------------------------------------------------------------------------
 
-## 4. Validation
+## 3.3 Validation
 
 Compare 95th percentile CHM against detected tree heights from Chapter 2.
 
@@ -196,7 +196,7 @@ print(validation) # review and revise
 
 ------------------------------------------------------------------------
 
-## 5. Build Mosaic
+## 3.4 Build Mosaic
 
 Merge all operating areas into single product for Chapter 4
 
@@ -221,14 +221,14 @@ writeRaster(
 
 This raster is the dominant height input for biomass models in Chapter 4.
 
-##### References
+#### References
 
 ::: {#refs}
 :::
 
 ------------------------------------------------------------------------
 
-##### Runtime Log
+#### Runtime Log
 
 ```{r}
 devtools::session_info()

@@ -130,3 +130,33 @@ pre code {
     font-size: 13px;
   }
 }
+
+
+
+/* =================================== */
+/* LISTING COMPONENTS                  */
+/* =================================== */
+
+/* Listing descriptions */
+.listing-description {
+  color: #374151 !important;
+  font-size: 0.75rem !important;  /* 14px - adjust as needed */
+  line-height: 1.5 !important;
+}
+
+/* Optional: style other listing elements */
+.listing-title {
+  font-size: 1rem !important;
+}
+
+.listing-date {
+  font-size: 0.75rem !important;
+  color: $brand-slate !important;
+}
+
+/* Listing images */
+.listing-item img {
+  max-width: 300px !important;
+  max-height: 150px !important;
+  object-fit: cover !important;
+}
