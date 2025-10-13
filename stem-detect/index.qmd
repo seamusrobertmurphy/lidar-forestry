@@ -19,8 +19,6 @@ format:
     embed-resources: false
     
 engine: knitr
-bibliography: ../references.bib
-csl: ../apa.csl
 ---
 
 ------------------------------------------------------------------------

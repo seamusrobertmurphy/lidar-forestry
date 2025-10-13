@@ -19,8 +19,6 @@ format:
     embed-resources: false
     
 engine: knitr
-bibliography: ../references.bib
-csl: ../apa.csl
 ---
 
 ------------------------------------------------------------------------
@@ -220,6 +218,8 @@ writeRaster(
 ```
 
 This raster is the dominant height input for biomass models in Chapter 4.
+
+------------------------------------------------------------------------
 
 #### References
 

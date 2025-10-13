@@ -28,6 +28,8 @@ knitr::opts_chunk$set(
 sf::sf_use_s2(use_s2 = FALSE)
 options(htmltools.dir.version = FALSE)
 tmap_options(max.raster = c(plot = 9500000, view = 10000000))
+#renv::snapshot()
+
 ```
 
 Airborne LiDAR is becoming a standard tool for forest inventory operations, yet the path from raw sensor data to validated forest metrics remains challenging. When LiDAR data arrives from field crews, bush pilots, or third-party providers, it typically consists of massive unclassified point clouds in .xyz or .laz format, sometimes exceeding 50 billion points, with no ground classification, height normalization, or quality control. Converting these raw data into usable forest products requires a systematic workflow spanning data preprocessing, terrain modeling, tree detection, canopy characterization, and biomass estimation.

@@ -15,12 +15,11 @@ format:
     toc-expand: 4
     number-sections: false
     theme: 
-      - default
       - ../styles.scss
+      - default
     embed-resources: false
     
 engine: knitr
-bibliography: ../references.bib
 ---
 
 ```{r setup}
@@ -55,7 +54,7 @@ tmap_options(max.raster = c(plot = 9500000, view = 10000000))
 
 ------------------------------------------------------------------------
 
-# Overview
+## Overview
 
 Raw LiDAR data arrives as massive unclassified point clouds (.xyz, .laz format) containing ground, vegetation, buildings, and noise. This chapter documents the preprocessing pipeline: catalog management, ground classification, noise removal, DTM generation, and height normalization. Output is analysis-ready normalized point clouds for tree detection.
 
@@ -114,7 +113,7 @@ plot(las_ctg_ahbau_indexed, chunk = TRUE)
 
 ## 1.2 Ground Classification
 
-In this section, we compare performances of the Cloth Simulation Filter (`csf()`) with the Progressive Morphological Filter (`pmf()`). As shown below, we found the `csf()` algorithm produced much a smoother DTM product. In our review of the literature, we found similar discrepancies recorded between these algorithms. The package's developers have since responded confirming there to be a flaw in function's mathematical logic that is exposed when comparing performances in point-cloud operations. This become especially evident across variable topograpy where the `csf()` excels [@zhang2016]. As a result, the `csf()` candidate was selected and its output was passed downstream for next steps.
+In this section, we compare performances of the Cloth Simulation Filter (`csf()`) with the Progressive Morphological Filter (`pmf()`). As shown below, we found the `csf()` algorithm produced much a smoother DTM product. In our review of the literature, we found similar discrepancies recorded between these algorithms. The package's developers have since responded confirming there to be a flaw in function's mathematical logic that is exposed when comparing performances in point-cloud operations. This become especially evident across variable topography where the `csf()` excels [@zhang2016]. As a result, the `csf()` candidate was selected and its output was passed downstream for next steps.
 
 ```{r}
 #| warning: false
@@ -238,9 +237,7 @@ hist(filter_ground(las_norm)$Z,
 
 ------------------------------------------------------------------------
 
-#### Runtime Notes
-
-**Catalog operations**:
+## Runtime Notes
 
 -   311 tiles processed in \~24 hours (high-performance system).
 -   Bottlenecks: ground classification (60%), DTM interpolation (30%), I/O overhead (10%).
@@ -262,8 +259,7 @@ hist(filter_ground(las_norm)$Z,
 
 ------------------------------------------------------------------------
 
-#### Runtime Log
-
 ```{r}
 devtools::session_info()
 ```
+

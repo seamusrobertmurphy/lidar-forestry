@@ -40,8 +40,19 @@ book:
   appendices:
     - resources/index.qmd
 
-bibliography: 
-  - references.bib
+bibliography: references.bib
+csl: apa.csl
+citeproc: false  
+
+filters:
+  - quarto  
+  - section-bibliographies
+
+reference-section-title: References
+
+section-bibliographies:
+  level: 1
+  minlevel: 1  
   
 sidebar:
     title: "LiDAR Forestry Tools"

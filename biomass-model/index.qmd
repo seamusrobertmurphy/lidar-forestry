@@ -19,8 +19,6 @@ format:
     embed-resources: false
     
 engine: knitr
-bibliography: ../references.bib
-csl: ../apa.csl
 ---
 
 ------------------------------------------------------------------------
@@ -691,6 +689,8 @@ hist(wsvha_quesnel,
 -   Compare predictions to pre-harvest cruise data
 -   Calculate block-level bias (systematic over/under-estimation)
 -   Assess prediction variance within homogeneous stands
+
+------------------------------------------------------------------------
 
 #### References
 
