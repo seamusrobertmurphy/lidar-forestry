@@ -68,22 +68,49 @@ options(htmltools.dir.version = FALSE,
 tmap_options(max.raster = c(plot = 9500000, view = 10000000)) # allows large raster rendering
 ```
 
+```{css, echo=FALSE, class.source = 'foldable'}
+div.column {
+    display: inline-block;
+    vertical-align: top;
+    width: 50%;
+}
+
+#TOC::before {
+  content: "";
+  display: block;
+  height:200px;
+  width: 200px;
+  background-image: url('https://raw.githubusercontent.com/seamusrobertmurphy/lidar-forestry/refs/heads/main/assets/PNG/stem_detect_C.png');
+  background-size: contain;
+  background-position: 50% 50%;
+  padding-top: 1px !important;
+  background-repeat: no-repeat;
+}
+```
+
 ## Overview
 
 LiDAR-derived metrics enable wall-to-wall biomass and volume predictions when calibrated with field inventory data. This chapter demonstrates the complete workflow: covariate preparation, species classification, masking, model training, and spatial prediction for whole stem volume per hectare (WSVHA) estimates.
 
 ------------------------------------------------------------------------
 
-## 4.1 Covariate Development
+## 4.1 Spatial Covariates
 
 ### Import Point Cloud
 
 ```{r}
 #| eval: false
-# Import
+# Import & extract
 las = lidR::readALSLAS(
 	"../stem-detect/data/bc_093j086_4_3_3_xyes_8_utm10_20240715_20240715.laz", 
-	select="xyzc", filter="-drop_z_below 0")
+	select="xyzc", filter="-drop_z_below 0") |>
+	lidR::clip_rectangle(
+		las_sor, 
+		xleft = 506500, 
+		ybottom = 6082500, 
+		xright = 506600, 
+		ytop = 6082600
+		)
 
 # Process DTM
 las_csf = lidR::classify_ground(las, csf(sloop_smooth=TRUE, 0.5, 1))
@@ -92,21 +119,12 @@ las_sor = lidR::filter_poi(las_sor, Classification != LASNOISE)
 dtm = lidR::rasterize_terrain(las_sor, res = 1, algorithm = tin())
 lidR::plot_dtm3d(dtm, bg = "white") 
 
-# Extract Cloud Subset 
-las_ha = lidR::clip_rectangle(
-	las_sor, 
-  xleft = 506500, 
-  ybottom = 6082500, 
-  xright = 506600, 
-  ytop = 6082600
-	)
-
 # Save outputs
 lidR::writeLAS(las_ha, "./data/las_ha.laz")
 terra::writeRaster(dtm, "./data/dtm_1m.tif")
 ```
 
-![](/assets/PNG/biomass-model-B.png){fig-align="center"}
+![](/assets/PNG/biomass-model-B.png){fig-align="center" width="95%"}
 
 ### Terrain Covariates
 
@@ -114,7 +132,7 @@ Derive slope and aspect from elevation raster. Transform aspect to northness (co
 
 ```{r}
 #| eval: false
-elev <- rast("./data/dtm_10m.tif")
+elev = terra::rast("./data/dtm_10m.tif")
 elev = terra::project(elev, "EPSG:3857")
 
 # Derive slope and aspect
@@ -149,6 +167,11 @@ slope = terra::classify(
 levels(slope) <- data.frame(ID = 1:6,
   slope_class = c("<5%", "5-10%", "10-15%", "15-20%", "20-30%", "30-100%"))
 
+terra::writeRaster(elev, "./data/elev_1m.tif")
+terra::writeRaster(slope, "./data/slope_1m.tif")
+terra::writeRaster(asp_cos, "./data/northness_1m.tif")
+terra::writeRaster(asp_sin, "./data/eastness_1m.tif")
+
 tmap::tmap_mode("plot")
 tmap::tm_shape(elev) + 
   tmap::tm_raster(
@@ -166,7 +189,7 @@ tmap::tm_shape(slope) +
   tmap::tm_scalebar(position = c("LEFT", "BOTTOM"), text.size = 0.5) + 
   tmap::tm_compass(color.dark="gray60",position=c("top","left")) -> tm2_static
 
-tmap::tm_shape(asp_sin) + 
+tmap::tm_shape(asp_cos) + 
   tmap::tm_raster(
     col.scale = tm_scale(values = "PiYG"), 
     col.legend=tm_legend(title="Northness",reverse = F)) + 
@@ -224,7 +247,7 @@ tmap::tm_shape(slope) +
   tmap::tm_scalebar(position = c("LEFT", "BOTTOM"), text.size = 0.5) + 
   tmap::tm_compass(color.dark="gray60",position=c("top","left")) -> tm2_static
 
-tmap::tm_shape(asp_sin) + 
+tmap::tm_shape(asp_cos) + 
   tmap::tm_raster(
     col.scale = tm_scale(values = "PiYG"), 
     col.legend=tm_legend(title="Northness",reverse = F)) + 
@@ -243,30 +266,34 @@ tmap::tm_shape(asp_sin) +
 tmap::tmap_arrange(tm1_static, tm2_static, tm3_static, tm4_static, nrow=2)
 ```
 
-### Canopy Height Aggregation
-
-```{r}
-#| eval: false
-
-# Load and aggregate CHM
-lead_htop <- rast("lead_htop_raster.tif")
-crs(lead_htop) <- "epsg:3005"
-lead_htop <- aggregate(lead_htop, fact = 100, fun = mean)
-lead_htop <- resample(lead_htop, elev, method = "bilinear")
-
-# Apply vegetation height threshold
-lead_htop[lead_htop < 1.3] <- NA
-```
-
-**Aggregation considerations:**
+### Canopy Covariate
 
 -   100x aggregation (1m → 100m) matches field plot scale
 -   Mean aggregation appropriate for height metrics
 -   Alternative: 95th percentile for dominant height
 
+```{r}
+#| eval: false
+las_ha = lidR::readALSLAS("./data/las_ha.laz")
+chm    = lidR::rasterize_canopy(las_ha, res=0.5, lidR::pitfree(subcircle=0.2))
+
+# Hillshade visualization
+slope 		= raster::terrain(chm, "slope", unit="radians") |> raster::raster()
+aspect		= raster::terrain(chm, "aspect", unit="radians") |> raster::raster()
+hillshade = raster::hillShade(slope, aspect, angle=40, direction=270)
+lidR::plot_dtm3d(hillshade, bg = "white") 
+lidR::plot_dtm3d(chm, bg = "white") 
+
+# Apply vegetation height threshold
+chm[chm < 1.3] <- NA
+terra::writeRaster(chm, "./data/chm_1m.tif")
+```
+
+![chm_hillshade_a](PNG/biomass_model_3.png){alt="Check Check 1" style="float: left; margin-right: 2%;" width="49.5%"} ![chm hillshade b](PNG/biomass_model_4.png){alt="Chunk Check 2" style="float: left;" width="46%"}
+
 ------------------------------------------------------------------------
 
-## 4.2 Species Classification
+## 4.2 Species Covariates
 
 ### VRI-Based Species Raster
 
@@ -274,135 +301,88 @@ lead_htop[lead_htop < 1.3] <- NA
 #| eval: false
 
 # Import VRI data
-vri_sf <- read_sf("vri_tcc_lquan_20220627.shp")
-
-# Filter to target species
-vri_species <- filter(vri_sf, 
-  SPECIES_CD %in% c('PL', 'PLI', 'FD', 'FDI', 
-                    'SB', 'SE', 'SW', 'SX', 
-                    'CW', 'HW', 'BL', 'LW'))
+#download.file(url = "https://pub.data.gov.bc.ca/datasets/02dba161-fdb7-48ae-a4bb-bd6ef017c36d/current/VEG_COMP_LYR_L1_POLY_2024.gdb.zip", destfile = "./data/vri_layers.zip", overwrite=TRUE)
+#zip_file_vri = ("./data/vri_layers.zip")
+#unzip(zip_file_vri, exdir="./data", overwrite = TRUE)
+vri = sf::read_sf("./data/vri_1ha.gpkg") |> 
+	dplyr::select(SPECIES_CD_1)
 
 # Recode to numeric classes
-vri_species$species_class <- recode(vri_species$SPECIES_CD,
-  PL = 0, PLI = 0,           # Pine
-  SB = 1, SE = 1, SW = 1, SX = 1,  # Spruce
-  FD = 2, FDI = 2,           # Douglas-fir
-  CW = 3,                    # Western redcedar
-  HW = 4,                    # Western hemlock
-  BL = 5,                    # Subalpine fir
-  LW = 6)                    # Western larch
+vri$species <- dplyr::recode(vri$SPECIES_CD_1,
+  PL = 0, PLI = 0,          				# Pine
+  SB = 1, SE = 1, SW = 1, SX = 1, 	# Spruce
+  FD = 2, FDI = 2,          				# Douglas-fir
+  CW = 3,                   				# Western redcedar
+  HW = 4,                   				# Western hemlock
+  BL = 5,				                    # Subalpine fir
+  LW = 6)       				          	# Western larch
 
 # Convert to raster
-vri_species_sf <- vri_species["species_class"]
-species_class_rast <- rasterize(vect(vri_species_sf), elev, 
-                                 field = "species_class", 
-                                 touches = TRUE)
-species_class_rast <- resample(species_class_rast, elev, method = "near")
+vri_species	 = vri["species"]
+species = terra::rasterize(
+	terra::vect(vri_species), chm, 
+  field = "species", 
+  touches = TRUE
+	)
+
+species <- terra::resample(species, chm, method = "near")
+terra::writeRaster(species, "./data/species.tif")
 ```
 
 **Species coding rationale:**
 
 -   Numeric classes enable regression models
 -   Grouped by similar allometry (e.g., all spruce species)
--   Near-neighbor resampling preserves categorical data
+-   Nearest-neighbor resampling method preserves categorical data
 
 ------------------------------------------------------------------------
 
-## 4.3 Masking Workflows
-
-### Disturbance and Infrastructure Masks
+## 4.3 Stack Covariates
 
 ```{r}
 #| eval: false
-
-# Import mask layers
-mask_burn <- read_sf("TCC_Burn_Severity_2017-2021.shp")
-mask_roads <- read_sf("TCC_Roads.shp")
-mask_clearcut <- read_sf("RSLT_CCRES_CLEAR.shp")
-mask_blocks <- read_sf("TCC_Blocks_Join.shp")
-
-# Buffer roads
-mask_roads <- st_buffer(mask_roads, dist = 15, 
-                        nQuadSegs = 5, 
-                        endCapStyle = "ROUND")
-
-# Filter high-severity burns only
-mask_burn <- filter(mask_burn, BurnSev == 'High')
-
-# Combine all masks
-masks_combined <- bind_rows(
-  mask_burn, mask_roads, mask_clearcut, mask_blocks
-)
-
-# Rasterize masks
-masks_rast <- rasterize(vect(masks_combined), elev, touches = TRUE)
-writeRaster(masks_rast, "mask_raster_100m_allAreas.tif", overwrite = TRUE)
-```
-
-### Apply Masking
-
-```{r}
-#| eval: false
-
-# Align all rasters
-lead_htop <- resample(lead_htop, elev)
-masks_rast <- resample(masks_rast, elev)
-species_class_rast <- resample(species_class_rast, elev)
-
-# Mask by disturbance (inverse=TRUE removes masked areas)
-lead_htop_masked <- mask(lead_htop, masks_rast, inverse = TRUE)
-elev_masked <- mask(elev, masks_rast, inverse = TRUE)
-slope_masked <- mask(slope, masks_rast, inverse = TRUE)
-asp_cos_masked <- mask(asp_cos, masks_rast, inverse = TRUE)
-asp_sin_masked <- mask(asp_sin, masks_rast, inverse = TRUE)
-
-# Mask by species (inverse=FALSE keeps only vegetated areas)
-lead_htop_masked <- mask(lead_htop_masked, species_class_rast, inverse = FALSE)
-elev_masked <- mask(elev_masked, species_class_rast, inverse = FALSE)
-slope_masked <- mask(slope_masked, species_class_rast, inverse = FALSE)
-asp_cos_masked <- mask(asp_cos_masked, species_class_rast, inverse = FALSE)
-asp_sin_masked <- mask(asp_sin_masked, species_class_rast, inverse = FALSE)
-species_class_masked <- mask(species_class_rast, masks_rast, inverse = TRUE)
-```
-
-**Critical:** Always mask by disturbances first, then by species to avoid including burned/harvested areas.
-
-------------------------------------------------------------------------
-
-## 4.4 Covariate Stack Assembly
-
-```{r}
-#| eval: false
+elev    = terra::rast("./data/elev_1m.tif")
+slope   = terra::rast("./data/slope_1m.tif")
+asp_cos = terra::rast("./data/northness_1m.tif")
+asp_sin = terra::rast("./data/eastness_1m.tif")
+chm			= terra::rast("./data/chm_1m.tif")
+species = terra::rast("./data/species.tif")
 
 # Rename layers for model compatibility
-names(elev_masked) <- "elev"
-names(slope_masked) <- "slope"
-names(asp_cos_masked) <- "asp_cos"
-names(asp_sin_masked) <- "asp_sin"
-names(lead_htop_masked) <- "lead_htop"
-names(species_class_masked) <- "species_class"
+names(elev) 		= "elev"
+names(slope)  	= "slope"
+names(asp_cos)  = "asp_cos"
+names(asp_sin)  = "asp_sin"
+names(chm)			= "chm"
+names(species)	= "species"
 
-# Convert to raster package format (for model prediction)
-elev_raster <- raster(elev_masked)
-slope_raster <- raster(slope_masked)
-asp_cos_raster <- raster(asp_cos_masked)
-asp_sin_raster <- raster(asp_sin_masked)
-lead_htop_raster <- raster(lead_htop_masked)
-species_class_raster <- raster(species_class_masked)
+elev		= terra::resample(elev, chm, method = "bilinear")
+slope		= terra::resample(slope, chm, method = "bilinear")
+asp_cos	= terra::resample(asp_cos, chm, method = "bilinear")
+asp_sin	= terra::resample(asp_sin, chm, method = "bilinear")
+species	= terra::resample(species, chm, method = "near")
+chm			= terra::resample(chm, elev, method = "bilinear")
+
+elev		= raster(elev)
+slope 	= raster(slope)
+asp_cos = raster(asp_cos)
+asp_sin = raster(asp_sin)
+chm			= raster(chm)
+species = raster(species)
 
 # Stack covariates
-covs_stack <- stack(
-  elev_raster, 
-  slope_raster, 
-  asp_cos_raster, 
-  asp_sin_raster, 
-  lead_htop_raster, 
-  species_class_raster
-)
+covs_stack <- raster::stack(
+  elev, 
+  slope, 
+  asp_cos, 
+  asp_sin, 
+  chm, 
+  species
+  )
 
 # Verify stack
 names(covs_stack)
-plot(covs_stack)
+rasterVis::levelplot(covs_stack)
 ```
 
 ------------------------------------------------------------------------

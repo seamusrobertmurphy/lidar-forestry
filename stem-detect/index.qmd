@@ -68,6 +68,26 @@ options(htmltools.dir.version = FALSE,
 tmap_options(max.raster = c(plot = 9500000, view = 10000000)) # allows large raster rendering
 ```
 
+```{css, echo=FALSE, class.source = 'foldable'}
+div.column {
+    display: inline-block;
+    vertical-align: top;
+    width: 50%;
+}
+
+#TOC::before {
+  content: "";
+  display: block;
+  height:200px;
+  width: 200px;
+  background-image: url('https://raw.githubusercontent.com/seamusrobertmurphy/lidar-forestry/refs/heads/main/assets/PNG/stem_detect_D.png');
+  background-size: contain;
+  background-position: 50% 50%;
+  padding-top: 80px !important;
+  background-repeat: no-repeat;
+}
+```
+
 # Overview
 
 Individual tree detection (ITD) spatially locates trees and extracts height information from LiDAR point clouds or canopy height models (CHM). Individual tree segmentation (ITS) delineates crown boundaries for detected trees. This chapter demonstrates both approaches using the local maximum filter (`lmf`) method and compares point cloud-based versus raster-based workflows.
@@ -122,7 +142,7 @@ terra::writeRaster(chm, "./data/chm_100m.tif")
 sf::st_write(ttops, "./data/ttops_100m.gpkg", delete_dsn = TRUE)
 ```
 
-![](/assets/PNG/stem_detect_A.png){fig-align="center"}
+![](/assets/PNG/stem_detect_A.png){fig-align="center" width="95%"}
 
 ### Variable Windows
 

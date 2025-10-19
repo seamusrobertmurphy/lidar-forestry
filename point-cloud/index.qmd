@@ -1,6 +1,6 @@
 ---
 title: "Point Clouds"
-subtitle: "DTM Generation and Preprocessing"
+subtitle: "Data Preprocessing and DTM Generation"
 date: 2021-12-05
 author: 
   - name: Seamus Murphy
@@ -52,6 +52,25 @@ options(htmltools.dir.version = FALSE)
 tmap_options(max.raster = c(plot = 9500000, view = 10000000))
 ```
 
+```{css, echo=FALSE, class.source = 'foldable'}
+div.column {
+    display: inline-block;
+    vertical-align: top;
+    width: 50%;
+}
+
+#TOC::before {
+  content: "";
+  display: block;
+  height:200px;
+  width: 200px;
+  background-image: url('https://raw.githubusercontent.com/seamusrobertmurphy/lidar-forestry/refs/heads/main/assets/PNG/las_tile_ahbau_norm.png');
+  background-size: contain;
+  background-position: 50% 50%;
+  padding-top: 80px !important;
+  background-repeat: no-repeat;
+}
+```
 ------------------------------------------------------------------------
 
 ## Overview
