@@ -153,6 +153,79 @@
       "Author": "Alina Beygelzimer [aut] (cover tree library), Sham Kakadet [aut] (cover tree library), John Langford [aut] (cover tree library), Sunil Arya [aut] (ANN library 1.1.2 for the kd-tree approach), David Mount [aut] (ANN library 1.1.2 for the kd-tree approach), Shengqiao Li [aut, cre]",
       "Maintainer": "Shengqiao Li <lishengqiao@yahoo.com>"
     },
+    "ForestTools": {
+      "Package": "ForestTools",
+      "Version": "1.0.3",
+      "Source": "Repository",
+      "Type": "Package",
+      "Title": "Tools for Analyzing Remote Sensing Forest Data",
+      "Date": "2025-02-02",
+      "Authors@R": "c( person(\"Andrew\", \"Plowright\", email = \"andrew.plowright@alumni.ubc.ca\", role = c(\"aut\", \"cre\")), person(\"Jean-Romain\", \"Roussel\", email = \"jean-romain.roussel.1@ulaval.ca\", role = c(\"ctb\"), comment = \"Contributed to segment-based GLCM segmentation\"))",
+      "Description": "Tools for analyzing remote sensing forest data, including functions for detecting treetops from canopy models, outlining tree crowns, and calculating textural metrics.",
+      "Depends": [
+        "R (>= 4.2)"
+      ],
+      "License": "GPL-3",
+      "Encoding": "UTF-8",
+      "LazyData": "true",
+      "Imports": [
+        "terra",
+        "sf",
+        "Matrix",
+        "imager",
+        "GLCMTextures"
+      ],
+      "Suggests": [
+        "testthat (>= 3.0.0)",
+        "knitr",
+        "rmarkdown"
+      ],
+      "RoxygenNote": "7.3.2",
+      "URL": "https://github.com/andrew-plowright/ForestTools",
+      "BugReports": "https://github.com/andrew-plowright/ForestTools/issues",
+      "Config/testthat/edition": "3",
+      "NeedsCompilation": "no",
+      "Author": "Andrew Plowright [aut, cre], Jean-Romain Roussel [ctb] (Contributed to segment-based GLCM segmentation)",
+      "Maintainer": "Andrew Plowright <andrew.plowright@alumni.ubc.ca>",
+      "Repository": "CRAN"
+    },
+    "GLCMTextures": {
+      "Package": "GLCMTextures",
+      "Version": "0.6.3",
+      "Source": "Repository",
+      "Title": "GLCM Textures of Raster Layers",
+      "Authors@R": "person(given = \"Alexander\", family = \"Ilich\", role = c(\"aut\", \"cre\"), email = \"ailich@usf.edu\", comment = c(ORCID = \"0000-0003-1758-8499\"))",
+      "Description": "Calculates grey level co-occurrence matrix (GLCM) based texture measures (Hall-Beyer (2017) <https://prism.ucalgary.ca/bitstream/handle/1880/51900/texture%20tutorial%20v%203_0%20180206.pdf>; Haralick et al. (1973) <doi:10.1109/TSMC.1973.4309314>) of raster layers using a sliding rectangular window. It also includes functions to quantize a raster into grey levels as well as tabulate a glcm and calculate glcm texture metrics for a matrix.",
+      "License": "GPL (>= 3)",
+      "Encoding": "UTF-8",
+      "RoxygenNote": "7.3.2",
+      "BugReports": "https://github.com/ailich/GLCMTextures/issues",
+      "Depends": [
+        "R (>= 3.5.0)",
+        "terra"
+      ],
+      "SystemRequirements": "C++17",
+      "LinkingTo": [
+        "Rcpp",
+        "RcppArmadillo"
+      ],
+      "Imports": [
+        "Rcpp",
+        "raster"
+      ],
+      "Suggests": [
+        "knitr",
+        "rmarkdown",
+        "testthat (>= 3.0.0)"
+      ],
+      "URL": "https://ailich.github.io/GLCMTextures/, https://github.com/ailich/GLCMTextures",
+      "VignetteBuilder": "knitr",
+      "Config/testthat/edition": "3",
+      "NeedsCompilation": "yes",
+      "Author": "Alexander Ilich [aut, cre] (ORCID: <https://orcid.org/0000-0003-1758-8499>)",
+      "Maintainer": "Alexander Ilich <ailich@usf.edu>",
+      "Repository": "CRAN"
+    },
     "KernSmooth": {
       "Package": "KernSmooth",
       "Version": "2.23-26",
@@ -856,6 +929,28 @@
       "NeedsCompilation": "yes",
       "Author": "Michael Chirico [aut, cre], Jens Oehlschlägel [aut], Leonardo Silvestri [ctb], Ofek Shilon [ctb]",
       "Maintainer": "Michael Chirico <michaelchirico4@gmail.com>",
+      "Repository": "CRAN"
+    },
+    "bmp": {
+      "Package": "bmp",
+      "Version": "0.3.1",
+      "Source": "Repository",
+      "Maintainer": "Gregory Jefferis <jefferis@gmail.com>",
+      "License": "GPL (>= 2)",
+      "Title": "Read Windows Bitmap (BMP) Images",
+      "Authors@R": "c(person(given = \"Gregory\", family = \"Jefferis\", role = c(\"aut\", \"cre\"), email = \"jefferis@gmail.com\", comment = c(ORCID = \"0000-0002-0587-9355\")) )",
+      "Description": "Reads Windows BMP format images. Currently limited to 8 bit greyscale images and 24,32 bit (A)RGB images. Pure R implementation without external dependencies.",
+      "Suggests": [
+        "pixmap",
+        "testthat"
+      ],
+      "Collate": "'read-bmp.R'",
+      "RoxygenNote": "7.3.2",
+      "Encoding": "UTF-8",
+      "URL": "https://github.com/jefferis/bmp",
+      "BugReports": "https://github.com/jefferis/bmp/issues",
+      "NeedsCompilation": "no",
+      "Author": "Gregory Jefferis [aut, cre] (ORCID: <https://orcid.org/0000-0002-0587-9355>)",
       "Repository": "CRAN"
     },
     "brew": {
@@ -2160,6 +2255,29 @@
       "NeedsCompilation": "no",
       "Author": "Hadley Wickham [aut, cre], Posit Software, PBC [cph, fnd]",
       "Maintainer": "Hadley Wickham <hadley@posit.co>",
+      "Repository": "CRAN"
+    },
+    "downloader": {
+      "Package": "downloader",
+      "Version": "0.4.1",
+      "Source": "Repository",
+      "Maintainer": "Winston Chang <winston@stdout.org>",
+      "Authors@R": "person(given = \"Winston\", family = \"Chang\", role = c(\"aut\", \"cre\"), email = \"winston@stdout.org\")",
+      "License": "GPL-2",
+      "Title": "Download Files over HTTP and HTTPS",
+      "Description": "Provides a wrapper for the download.file function, making it possible to download files over HTTPS on Windows, Mac OS X, and other Unix-like platforms. The 'RCurl' package provides this functionality (and much more) but can be difficult to install because it must be compiled with external dependencies. This package has no external dependencies, so it is much easier to install.",
+      "URL": "https://github.com/wch/downloader",
+      "Imports": [
+        "utils",
+        "digest"
+      ],
+      "Suggests": [
+        "testthat"
+      ],
+      "BugReports": "https://github.com/wch/downloader/issues",
+      "RoxygenNote": "7.3.2",
+      "NeedsCompilation": "no",
+      "Author": "Winston Chang [aut, cre]",
       "Repository": "CRAN"
     },
     "dplyr": {
@@ -3592,6 +3710,59 @@
       "NeedsCompilation": "yes",
       "Author": "Gábor Csárdi [aut] (<https://orcid.org/0000-0001-7098-9676>), Tamás Nepusz [aut] (<https://orcid.org/0000-0002-1451-338X>), Vincent Traag [aut] (<https://orcid.org/0000-0003-3170-3879>), Szabolcs Horvát [aut] (<https://orcid.org/0000-0002-3100-523X>), Fabio Zanini [aut] (<https://orcid.org/0000-0001-7097-8539>), Daniel Noom [aut], Kirill Müller [aut, cre] (<https://orcid.org/0000-0002-1416-3412>), Maëlle Salmon [ctb], Michael Antonov [ctb], Chan Zuckerberg Initiative [fnd]",
       "Maintainer": "Kirill Müller <kirill@cynkra.com>",
+      "Repository": "CRAN"
+    },
+    "imager": {
+      "Package": "imager",
+      "Version": "1.0.5",
+      "Source": "Repository",
+      "Type": "Package",
+      "Title": "Image Processing Library Based on 'CImg'",
+      "Authors@R": "c(person(\"Simon\",\"Barthelme\",email=\"simon.barthelme@gipsa-lab.fr\",role=c(\"aut\")), person(\"David\",\"Tschumperle\",role=c(\"ctb\")), person(\"Jan\",\"Wijffels\",role=c(\"ctb\")), person(\"Haz Edine\",\"Assemlal\",role=c(\"ctb\")), person(\"Shota\",\"Ochi\",email=\"shotaochi1990@gmail.com\",role=c(\"ctb\")), person(\"Aaron\",\"Robotham\",email=\"aaron.robotham@uwa.edu.au\",role=c(\"cre\")), person(\"Rodrigo\",\"Tobar\",role=c(\"ctb\")))",
+      "Description": "Fast image processing for images in up to 4 dimensions (two spatial dimensions, one time/depth dimension, one colour dimension). Provides most traditional image processing tools (filtering, morphology, transformations, etc.) as well as various functions for easily analysing image data using R. The package wraps 'CImg', <http://cimg.eu>, a simple, modern C++ library for image processing.",
+      "License": "LGPL-3",
+      "Imports": [
+        "Rcpp (>= 1.0.0)",
+        "methods",
+        "stringr",
+        "png",
+        "jpeg",
+        "readbitmap",
+        "grDevices",
+        "purrr",
+        "downloader",
+        "igraph"
+      ],
+      "Depends": [
+        "R (>= 4.0.0)",
+        "magrittr"
+      ],
+      "URL": "https://asgr.github.io/imager/, https://github.com/asgr/imager/",
+      "BugReports": "https://github.com/asgr/imager/issues",
+      "SystemRequirements": "fftw3, libtiff, X11",
+      "LinkingTo": [
+        "Rcpp"
+      ],
+      "LazyData": "true",
+      "RoxygenNote": "7.3.2",
+      "Suggests": [
+        "Cairo",
+        "dplyr",
+        "ggplot2",
+        "knitr",
+        "magick",
+        "raster",
+        "rmarkdown",
+        "scales",
+        "testthat",
+        "spatstat.geom",
+        "webp"
+      ],
+      "VignetteBuilder": "knitr",
+      "Encoding": "UTF-8",
+      "NeedsCompilation": "yes",
+      "Author": "Simon Barthelme [aut], David Tschumperle [ctb], Jan Wijffels [ctb], Haz Edine Assemlal [ctb], Shota Ochi [ctb], Aaron Robotham [cre], Rodrigo Tobar [ctb]",
+      "Maintainer": "Aaron Robotham <aaron.robotham@uwa.edu.au>",
       "Repository": "CRAN"
     },
     "ini": {
@@ -6501,6 +6672,33 @@
       "Maintainer": "Gábor Csárdi <csardi.gabor@gmail.com>",
       "Repository": "CRAN"
     },
+    "readbitmap": {
+      "Package": "readbitmap",
+      "Version": "0.1.5",
+      "Source": "Repository",
+      "License": "GPL (>= 2)",
+      "Title": "Simple Unified Interface to Read Bitmap Images (BMP,JPEG,PNG,TIFF)",
+      "Authors@R": "c( person(\"Gregory\",\"Jefferis\", email=\"jefferis@gmail.com\",  role = c(\"aut\", \"cre\"), comment = c(ORCID = \"0000-0002-0587-9355\")), person(\"Derek\", \"Ogle\", role = c(\"ctb\")), person(\"Simon\", \"Barthelme\", role = c(\"ctb\")) )",
+      "Description": "Identifies and reads Windows BMP, JPEG, PNG, and TIFF format bitmap images. Identification defaults to the use of the magic number embedded in the file rather than the file extension. Reading of JPEG and PNG image depends on libjpg and libpng libraries. See file INSTALL for details if necessary.",
+      "URL": "https://github.com/jefferis/readbitmap",
+      "BugReports": "https://github.com/jefferis/readbitmap/issues",
+      "SystemRequirements": "libjpeg, libpng",
+      "Imports": [
+        "bmp",
+        "jpeg",
+        "png",
+        "tiff"
+      ],
+      "Suggests": [
+        "pixmap",
+        "testthat"
+      ],
+      "RoxygenNote": "6.0.1",
+      "NeedsCompilation": "no",
+      "Author": "Gregory Jefferis [aut, cre] (<https://orcid.org/0000-0002-0587-9355>), Derek Ogle [ctb], Simon Barthelme [ctb]",
+      "Maintainer": "Gregory Jefferis <jefferis@gmail.com>",
+      "Repository": "CRAN"
+    },
     "readr": {
       "Package": "readr",
       "Version": "2.1.5",
@@ -8795,6 +8993,23 @@
       "NeedsCompilation": "yes",
       "Author": "Lionel Henry [aut, cre], Hadley Wickham [aut], Posit Software, PBC [cph, fnd]",
       "Maintainer": "Lionel Henry <lionel@posit.co>",
+      "Repository": "CRAN"
+    },
+    "tiff": {
+      "Package": "tiff",
+      "Version": "0.1-12",
+      "Source": "Repository",
+      "Title": "Read and Write TIFF Images",
+      "Author": "Simon Urbanek <Simon.Urbanek@r-project.org> [aut, cre], Kent Johnson <kjohnson@akoyabio.com> [ctb]",
+      "Maintainer": "Simon Urbanek <Simon.Urbanek@r-project.org>",
+      "Depends": [
+        "R (>= 2.9.0)"
+      ],
+      "Description": "Functions to read, write and display bitmap images stored in the TIFF format. It can read and write both files and in-memory raw vectors, including native image representation.",
+      "License": "GPL-2 | GPL-3",
+      "SystemRequirements": "tiff and jpeg libraries",
+      "URL": "https://www.rforge.net/tiff/",
+      "NeedsCompilation": "yes",
       "Repository": "CRAN"
     },
     "timeDate": {

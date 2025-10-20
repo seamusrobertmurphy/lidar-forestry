@@ -29,7 +29,6 @@ sf::sf_use_s2(use_s2 = FALSE)
 options(htmltools.dir.version = FALSE)
 tmap_options(max.raster = c(plot = 9500000, view = 10000000))
 #renv::snapshot()
-
 ```
 
 ```{css, echo=FALSE, class.source = 'foldable'}
@@ -47,11 +46,10 @@ div.column {
   background-image: url('https://raw.githubusercontent.com/seamusrobertmurphy/lidar-forestry/refs/heads/main/assets/PNG/graphical-abstract.png');
   background-size: contain;
   background-position: 50% 50%;
-  padding-top: 80px !important;
+  padding-top: 1px !important;
   background-repeat: no-repeat;
 }
 ```
-
 
 Airborne LiDAR is becoming a standard tool for forest inventory operations, yet the path from raw sensor data to validated forest metrics remains challenging. When LiDAR data arrives from field crews, bush pilots, or third-party providers, it typically consists of massive unclassified point clouds in .xyz or .laz format, sometimes exceeding 50 billion points, with no ground classification, height normalization, or quality control. Converting these raw data into usable forest products requires a systematic workflow spanning data preprocessing, terrain modeling, tree detection, canopy characterization, and biomass estimation.
 
@@ -81,9 +79,43 @@ Accurate canopy height models (CHMs) are essential for forest inventory metrics.
 
 With validated CHMs and stem maps, aboveground biomass can be estimated. This chapter focuses on model selection, allometric equation application, bias correction, and uncertainty quantification. The goal is achieving root mean square error (RMSE) below operational thresholds while understanding model limitations across forest conditions. Model diagnostics identify when predictions fail and why.
 
+![](https://raw.githubusercontent.com/seamusrobertmurphy/lidar-forestry/refs/heads/main/assets/PNG/graphical-abstract.png){fig-align="center" width="95%"}
+
 ------------------------------------------------------------------------
 
-## Computational Constraints
+## Environment Setup
+
+```{r}
+#| warning: false
+#| message: false
+#| error: false
+#| eval: false
+
+pacman::p_load(
+  "curl", 
+  "dplyr",
+  "fontawesome",
+  "htmltools",
+  "kableExtra", "knitr",
+  "lidR", 
+  "raster", "reproj", "renv",
+  "sf",
+  "terra", "tmap",
+  "useful")
+
+knitr::opts_chunk$set(
+  echo = TRUE, 
+  message = FALSE, 
+  warning = FALSE,
+  error = TRUE, 
+  comment = NA)
+
+sf::sf_use_s2(use_s2 = FALSE)
+options(htmltools.dir.version = FALSE)
+tmap_options(max.raster = c(plot = 9500000, view = 10000000))
+```
+
+## Runtime Constraints
 
 Processing a cluster of cutblocks can require a full day on high-performance systems, particularly with high point density clouds or when tiling configuration and spatial indexing are sub-optimal. The methods demonstrated prioritize handling large datasets through tiled processing, managing edge effects, and quantifying uncertainty when field validation data are sparse. Specifically, this workflow emphasizes:
 

@@ -11,8 +11,6 @@ format:
     toc: true
     toc-location: right
     toc-title: "**Contents**"
-    toc-depth: 5
-    toc-expand: 4
     number-sections: false
     theme: 
       - ../styles.scss
@@ -22,12 +20,19 @@ format:
 engine: knitr
 ---
 
+## 1.0 Overview
+
+Raw LiDAR data arrives as massive unclassified point clouds (.xyz, .laz format) containing ground, vegetation, buildings, and noise. This chapter documents the preprocessing pipeline: catalog management, ground classification, noise removal, DTM generation, and height normalization. Output is analysis-ready normalized point clouds for tree detection.
+
+**Note**: Ground classification and DTM generation on large catalogs can require full-day processing times. Tiling configuration and indexing quality directly impact performance.
+
+### Environment Setup
+
 ```{r setup}
 #| warning: false
 #| message: false
 #| error: false
-#| echo: false
-
+#| echo: true
 pacman::p_load(
   "curl", 
   "dplyr",
@@ -39,6 +44,13 @@ pacman::p_load(
   "sf",
   "terra", "tmap",
   "useful")
+```
+
+```{r}
+#| warning: false
+#| message: false
+#| error: false
+#| echo: false
 
 knitr::opts_chunk$set(
   echo = TRUE, 
@@ -71,13 +83,6 @@ div.column {
   background-repeat: no-repeat;
 }
 ```
-------------------------------------------------------------------------
-
-## Overview
-
-Raw LiDAR data arrives as massive unclassified point clouds (.xyz, .laz format) containing ground, vegetation, buildings, and noise. This chapter documents the preprocessing pipeline: catalog management, ground classification, noise removal, DTM generation, and height normalization. Output is analysis-ready normalized point clouds for tree detection.
-
-**Note**: Ground classification and DTM generation on large catalogs can require full-day processing times. Tiling configuration and indexing quality directly impact performance.
 
 ------------------------------------------------------------------------
 
@@ -256,7 +261,7 @@ hist(filter_ground(las_norm)$Z,
 
 ------------------------------------------------------------------------
 
-## Runtime Notes
+### Runtime Notes
 
 -   311 tiles processed in \~24 hours (high-performance system).
 -   Bottlenecks: ground classification (60%), DTM interpolation (30%), I/O overhead (10%).

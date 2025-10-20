@@ -10,8 +10,6 @@ format:
     toc: true
     toc-location: right
     toc-title: "**Contents**"
-    toc-depth: 5
-    toc-expand: 4
     number-sections: false
     theme: 
       - default
@@ -21,19 +19,27 @@ format:
 engine: knitr
 ---
 
+## 2.0 Overview
+
+Individual tree detection (ITD) spatially locates trees and extracts height information from LiDAR point clouds or canopy height models (CHM). Individual tree segmentation (ITS) delineates crown boundaries for detected trees. This chapter demonstrates both approaches using the local maximum filter (`lmf`) method and compares point cloud-based versus raster-based workflows.
+
+It is important to include the `uniqueness` parameter in `locate_trees()` operations when processing tiled data. This is essential to prevent duplicate tree detection at tile boundaries. Trees detected in overlapping buffer zones can be counted multiple times without this parameter. Always use `uniqueness="bitmerge"` for tiled workflows.
+
+**Note**: Tree detection across large catalogs is the most time-intensive stage. Dense canopies and high point densities substantially increase processing time. Expect multi-hour runtimes for operational-scale projects.
+
 ------------------------------------------------------------------------
 
+### Environment Setup
+
 ```{r setup}
-#| warning: false
-#| message: false
-#| error: false
-#| echo: false
-
-
+#| warning: true
+#| message: true
+#| error: true
+#| echo: true
 pacman::p_load(
   "curl", 
   "dplyr",
-	"fontawesome",
+  "fontawesome", "ForestTools",
   "htmltools", "httr2",
   "janitor",
   "kableExtra", "knitr",
@@ -43,29 +49,32 @@ pacman::p_load(
   "raster", "rasterVis", "reproj", "RCSF", "RColorBrewer",
   "sf",
   "tinytex", "tmap", "tmaptools", "terra",
-  "useful", "usethis", 
-  "webshot", "webshot2", "weathercan")
+  "useful", "usethis"
+  )
+```
 
-knitr::opts_chunk$set(
-  echo = TRUE, 
-  message = FALSE, 
-  warning = FALSE,
-  error = TRUE, 
-  comment = NA, 
-  tidy.opts = list(
-    width.cutoff = 60)
+```{r}
+#| warning: false
+#| message: false
+#| error: false
+#| echo: false
+knitr::opts_chunk$set(tidy.opts = list(width.cutoff=60),
+  echo			= TRUE, 
+  message 	= FALSE, 
+  warning 	= FALSE,
+  error 		= TRUE, 
+  comment 	= NA
   ) 
 
-#knit_hooks$set(webgl = hook_webgl)
-#knit_hooks$set(rgl.static = hook_rgl)
 sf::sf_use_s2(use_s2 = FALSE)
+options(
+	htmltools.dir.version = FALSE, 
+	htmltools.preserve.raw = FALSE,
+	tinytex.verbose = TRUE
+	)
 
-options(htmltools.dir.version = FALSE, 
-        htmltools.preserve.raw = FALSE,
-				tinytex.verbose = TRUE
-				)
-
-tmap_options(max.raster = c(plot = 9500000, view = 10000000)) # allows large raster rendering
+# assigns larger memory to raster rendering
+tmap_options(max.raster = c(plot = 9500000, view = 10000000)) 
 ```
 
 ```{css, echo=FALSE, class.source = 'foldable'}
@@ -87,14 +96,6 @@ div.column {
   background-repeat: no-repeat;
 }
 ```
-
-# Overview
-
-Individual tree detection (ITD) spatially locates trees and extracts height information from LiDAR point clouds or canopy height models (CHM). Individual tree segmentation (ITS) delineates crown boundaries for detected trees. This chapter demonstrates both approaches using the local maximum filter (`lmf`) method and compares point cloud-based versus raster-based workflows.
-
-It is important to include the `uniqueness` parameter in `locate_trees()` operations when processing tiled data. This is essential to prevent duplicate tree detection at tile boundaries. Trees detected in overlapping buffer zones can be counted multiple times without this parameter. Always use `uniqueness="bitmerge"` for tiled workflows.
-
-**Note**: Tree detection across large catalogs is the most time-intensive stage. Dense canopies and high point densities substantially increase processing time. Expect multi-hour runtimes for operational-scale projects.
 
 ## 2.1 Point Cloud Method
 
@@ -137,9 +138,9 @@ plot(chm, col=height.colors(50))
 plot(st_geometry(ttops), add=TRUE, pch=3)
 
 # Save outputs
-lidR::writeLAS(las_ha, "./data/las_100m.laz")
-terra::writeRaster(chm, "./data/chm_100m.tif")
-sf::st_write(ttops, "./data/ttops_100m.gpkg", delete_dsn = TRUE)
+lidR::writeLAS(las_ha, "../data/las_1ha.laz")
+terra::writeRaster(chm, "../data/chm_1ha.tif")
+sf::st_write(ttops, "../data/ttops_1ha.gpkg", delete_dsn = TRUE)
 ```
 
 ![](/assets/PNG/stem_detect_A.png){fig-align="center" width="95%"}

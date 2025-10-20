@@ -10,8 +10,6 @@ format:
     toc: true
     toc-location: right
     toc-title: "**Contents**"
-    toc-depth: 2
-    toc-expand: 4
     number-sections: false
     theme: 
       - default
@@ -23,13 +21,17 @@ engine: knitr
 
 ------------------------------------------------------------------------
 
+## 4.0 Overview
+
+LiDAR-derived metrics enable wall-to-wall biomass and volume predictions when calibrated with field inventory data. This chapter demonstrates the complete workflow: covariate preparation, species classification, masking, model training, and spatial prediction for whole stem volume per hectare (WSVHA) estimates
+
+### Environment Setup
+
 ```{r setup}
 #| warning: false
 #| message: false
 #| error: false
-#| echo: false
-
-
+#| echo: true
 pacman::p_load(
   "caret", "curl", 
   "dplyr", 
@@ -45,6 +47,13 @@ pacman::p_load(
   "tinytex", "tmap", "tmaptools", "terra",
   "useful", "usethis", 
   "webshot", "webshot2", "weathercan")
+```
+
+```{r}
+#| warning: false
+#| message: false
+#| error: false
+#| echo: false
 
 knitr::opts_chunk$set(
   echo = TRUE, 
@@ -88,39 +97,21 @@ div.column {
 }
 ```
 
-## Overview
-
-LiDAR-derived metrics enable wall-to-wall biomass and volume predictions when calibrated with field inventory data. This chapter demonstrates the complete workflow: covariate preparation, species classification, masking, model training, and spatial prediction for whole stem volume per hectare (WSVHA) estimates.
-
 ------------------------------------------------------------------------
 
 ## 4.1 Spatial Covariates
 
-### Import Point Cloud
+### Import LiDAR
 
 ```{r}
 #| eval: false
 # Import & extract
-las = lidR::readALSLAS(
-	"../stem-detect/data/bc_093j086_4_3_3_xyes_8_utm10_20240715_20240715.laz", 
-	select="xyzc", filter="-drop_z_below 0") |>
-	lidR::clip_rectangle(
-		las_sor, 
-		xleft = 506500, 
-		ybottom = 6082500, 
-		xright = 506600, 
-		ytop = 6082600
-		)
-
-# Process DTM
-las_csf = lidR::classify_ground(las, csf(sloop_smooth=TRUE, 0.5, 1))
-las_sor = lidR::classify_noise(las_csf, sor(k=10, m=3))
-las_sor = lidR::filter_poi(las_sor, Classification != LASNOISE)
+las = lidR::readALSLAS("../data/las_ha.laz")
 dtm = lidR::rasterize_terrain(las_sor, res = 1, algorithm = tin())
 lidR::plot_dtm3d(dtm, bg = "white") 
 
 # Save outputs
-lidR::writeLAS(las_ha, "./data/las_ha.laz")
+
 terra::writeRaster(dtm, "./data/dtm_1m.tif")
 ```
 
