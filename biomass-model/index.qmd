@@ -17,6 +17,9 @@ format:
     embed-resources: false
     
 engine: knitr
+bibliography: ../references/references.bib
+csl: ../references/apa.csl
+citeproc: true
 ---
 
 ------------------------------------------------------------------------
@@ -663,14 +666,7 @@ hist(wsvha_quesnel,
 
 ------------------------------------------------------------------------
 
-#### References
-
-::: {#refs}
-:::
-
-------------------------------------------------------------------------
-
-#### Runtime Log
+### Runtime Log
 
 ```{r}
 devtools::session_info()

@@ -1,4 +1,14 @@
+---
+format:
+  html:
+    toc: true
+    toc-location: right
+    toc-depth: 3
+    number-sections: false
+---
 # Preface {.unnumbered}
+
+------------------------------------------------------------------------
 
 ```{r setup}
 #| warning: false
@@ -29,6 +39,24 @@ sf::sf_use_s2(use_s2 = FALSE)
 options(htmltools.dir.version = FALSE)
 tmap_options(max.raster = c(plot = 9500000, view = 10000000))
 #renv::snapshot()
+```
+
+```{r}
+#| echo: false
+#| results: asis
+
+# Create icon links for author section
+fa_orcid <- fontawesome::fa("orcid", fill = "#A6CE39")
+fa_linkedin <- fontawesome::fa("linkedin", fill = "#0A66C2")
+fa_pdf <- fontawesome::fa("file-pdf", fill = "#D40009")
+fa_scholar <- fontawesome::fa("graduation-cap", fill = "#1F71B8")
+
+icons_html <- htmltools::HTML(paste(
+  sprintf('<a href="https://linkedin.com/in/seamusrobertmurphy" title="LinkedIn" style="margin: 0 8px;">%s</a>', fa_linkedin),
+  sprintf('<a href="https://drive.google.com/uc?export=download&id=13YLhsRCAMMHQw-jd2SJdaRJH9udBGytP" title="Resume" style="margin: 0 8px;">%s</a>', fa_pdf),
+  sprintf('<a href="https://scholar.google.com/citations?hl=en&user=jDGq9I4AAAAJ" title="Google Scholar" style="margin: 0 8px;">%s</a>', fa_scholar),
+  sep = ''
+))
 ```
 
 ```{css, echo=FALSE, class.source = 'foldable'}
@@ -63,19 +91,19 @@ These workflows uses R and the `lidR` [@roussel2019lidr; @roussel2020] and `Fore
 
 This material was organized around the following four key stages in a lidar data processing pipeline:
 
-### Stage 1: Point Cloud Processing:
+## Stage 1: Point Cloud Processing:
 
 Raw unclassified LiDAR data arrives containing ground, vegetation, buildings, and noise. This chapter covers importing massive point clouds, ground classification algorithms, generating digital terrain models (DTMs), normalizing heights, and preparing analysis-ready datasets. Decisions made in this early stage regarding selection of ground classification algorithms, DTM resolutions, and noise filtering, all propagate through subsequent processes. Key tip: be patient at this early stage and plan for more time than you expect to spend on it.
 
-### Stage 2: Individual Tree Detection
+## Stage 2: Individual Tree Detection
 
 With normalized point clouds and canopy height rasters in hand, individual tree stems can be detected and delineated. This chapter compares raster-based approaches (using canopy height models) versus point cloud-based methods (using 3D clustering). Tree detection is computationally intensive and results vary substantially by forest type, canopy closure, and point density. The output is a spatially-explicit stem map identifying tree locations and initial height estimates.
 
-### Stage 3: Canopy Height Modeling
+## Stage 3: Canopy Height Modeling
 
 Accurate canopy height models (CHMs) are essential for forest inventory metrics. This chapter documents methods for generating CHMs from normalized point clouds, managing gaps and edge effects, smoothing while preserving canopy structure, and cross-validating outputs against field measurements. The CHM serves as the primary input for biomass modeling.
 
-### Stage 4: Biomass Estimation
+## Stage 4: Biomass Estimation
 
 With validated CHMs and stem maps, aboveground biomass can be estimated. This chapter focuses on model selection, allometric equation application, bias correction, and uncertainty quantification. The goal is achieving root mean square error (RMSE) below operational thresholds while understanding model limitations across forest conditions. Model diagnostics identify when predictions fail and why.
 
@@ -115,7 +143,7 @@ options(htmltools.dir.version = FALSE)
 tmap_options(max.raster = c(plot = 9500000, view = 10000000))
 ```
 
-## Runtime Constraints
+## Runtime Notes
 
 Processing a cluster of cutblocks can require a full day on high-performance systems, particularly with high point density clouds or when tiling configuration and spatial indexing are sub-optimal. The methods demonstrated prioritize handling large datasets through tiled processing, managing edge effects, and quantifying uncertainty when field validation data are sparse. Specifically, this workflow emphasizes:
 
@@ -123,7 +151,7 @@ Processing a cluster of cutblocks can require a full day on high-performance sys
 -   Tiled processing to manage computational load
 -   Validation strategies when field data are sparse
 -   Quantifying uncertainty in derived products
--   Identifying conditions where methods fail
+-   Identifying conditions where methods fail[^index-1]
 
 For peace of mind, it is worth quickly reviewing some of the core methodological assumptions and critical performance factors across the pipeline. For example, Ground classification algorithms by their nature assume terrain smoothness. This should caution the user where they notice deviations from this assumption, as it can negatively impact classification accuracy. Similarly, we should monitor performance of tree detection algorithms in areas of dense canopy, where these models have revealed weaknesses. Additionally, unconstrained biomass models tend quietly extrapolate beyond the qualitative thresholds of their training data. If undetected, this can quickly introduce significant uncertainty, making the source of the error difficult and time-consuming to trace. In this context, such errors should be treated instead as unlikely allies. As we will likely encounter downstream, understanding where these methods break down can prove to be as important as knowing where they succeed.
 
@@ -131,11 +159,4 @@ This book is written for forestry practitioners, resource managers, and spatial 
 
 ------------------------------------------------------------------------
 
-**Note**: This is a living document updated as methods and packages evolve. Check the [GitHub repository](https://github.com/seamusrobertmurphy/lidar-forestry) for the latest version and to report issues.
-
-------------------------------------------------------------------------
-
-## References
-
-::: {#refs}
-:::
+[^index-1]: This is a living document updated as methods and packages evolve. Check the [GitHub repository](https://github.com/seamusrobertmurphy/lidar-forestry) for the latest version and to report issues.

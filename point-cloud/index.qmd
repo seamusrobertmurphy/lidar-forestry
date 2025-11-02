@@ -18,6 +18,9 @@ format:
     embed-resources: false
     
 engine: knitr
+bibliography: ../references/references.bib
+csl: ../references/apa.csl
+citeproc: true  
 ---
 
 ## 1.0 Overview
@@ -276,14 +279,8 @@ hist(filter_ground(las_norm)$Z,
 
 ------------------------------------------------------------------------
 
-#### References
-
-::: {#refs}
-:::
-
-------------------------------------------------------------------------
+### Runtime Log
 
 ```{r}
 devtools::session_info()
 ```
-

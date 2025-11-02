@@ -17,6 +17,9 @@ format:
     embed-resources: false
     
 engine: knitr
+bibliography: ../references/references.bib
+csl: ../references/apa.csl
+citeproc: true
 ---
 
 ## 2.0 Overview
@@ -261,14 +264,7 @@ cat("Omission rate: 0%\n")
 
 ------------------------------------------------------------------------
 
-#### References
-
-::: {#refs}
-:::
-
-------------------------------------------------------------------------
-
-#### Runtime Log
+### Runtime Log
 
 ```{r}
 devtools::session_info()
