@@ -1,0 +1,144 @@
+---
+title: "rFVS Demo"
+execute:
+  echo: true
+format:
+  html:
+    toc: true
+    toc-location: right
+    toc-depth: 4
+    toc-title: "**On this page**"
+    number-sections: false
+    highlight-style: pygments
+    page-layout: article
+
+editor_options: 
+  markdown: 
+    wrap: 60
+engine: knitr
+bibliography: ../references/references.bib
+csl: ../references/apa.csl
+citeproc: true
+---
+
+```{r setup}
+#| warning: false
+#| message: false
+#| error: false
+#| echo: false
+#| comment: NA
+pacman::p_load(
+  "bslib",
+  "cli", "cols4all", "covr", "cowplot", "colorblindcheck",
+  "dendextend", "digest", "DiagrammeR", 
+  "dtwclust", "downlit",
+  "exactextractr", "elevatr",
+  "FNN", "future", "flowdem",
+  "gdalUtilities", "geojsonsf", "geos", "geodata", 
+  "ggplot2", "ggstats","ggspatial", "ggmap", 
+  "ggplotify", "ggpubr", "ggrepel", "giscoR",
+  "hdf5r", "httr", "httr2", "htmltools",
+  "jsonlite",
+  "leafem", "leaflet.providers", "libgeos", 
+  "luz", "lwgeom", "leaflet", "leafgl",
+  "mapedit", "mapview", "maptiles", 
+  "methods", "mgcv", "MPI",
+  "ncdf4", "nnet",
+  "openxlsx",
+  "parallel", "plotly", "proj4", "PROJ", "progress", "purrr",
+  "randomForest", "rasterVis", "raster", 
+  "rayshader", "rayvertex", 
+  "RColorBrewer", "rgl", "rmapshaper", "rsconnect", 
+  "RStoolbox", "rts", "rgrass", "rFVS",
+  "s2", "sf", "scales", "spdep", "stars", 
+  "stringr", "supercells",
+  "terra", "terrainr", "testthat", "traudem", 
+  "tidyverse", "tidyterra", "tools",
+  "tmap", "tmaptools", "terrainr",
+  "whitebox", "xgboost"
+  )
+
+# bleeding edge installs
+#remotes::install_github("lucarraro/traudem", force=T)
+#pak::pkg_install("MPI")
+#devtools::install_github("lucarraro/traudem")
+#remotes::install_github("opengeos/whiteboxR", build=F)
+#remotes::install_github("giswqs/whiteboxR") 
+#install.packages("easypackages")
+
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE, 
+  warning = FALSE,
+  error = FALSE, 
+  comment = NA, 
+  tidy.opts = list(width.cutoff = 60)
+  ) 
+
+options(
+  htmltools.dir.version = FALSE, 
+  htmltools.preserve.raw = FALSE)
+
+tmap::tmap_options(
+  component.autoscale=F,
+  max.raster = c(
+    plot=9500000, 
+    view=10000000)
+  )
+
+# whitebox doesnt like working with files in memory
+# so we need to assign path to working directory 
+# whitebox::install_whitebox() # install whitebox and GRASS libraries
+# whitebox::wbt_init() # activate whitebox library in current directory
+# list.files("/usr/local/taudem/") # Check traudem.pkg installation
+# traudem::taudem_sitrep() # Check traudem dependencies
+# Ignore above message "Can't find  `MoveOutletsToStrm`"
+
+# ----- TauDEM d8 Check ---- #
+# all(sapply(d8, file.exists))
+# Expected result: [1] TRUE
+# all(file.exists(unlist(d8)))
+# Expected result: [1] TRUE
+# all(map_lgl(d8, file.exists))
+# Expected result: [1] TRUE
+# can_register_taudem()
+# Expected result: [1] TRUE
+# Whitebox loaded tools: `print(wbt_list_tools())`
+# Whitebox shortcuts : `print(wbt_help())`
+# Whitebox version : `print(wbt_version())`
+# Whitebox tool guide: `print(wbt_tool_help("lidar_info"))`\
+# Whitebox parameter guide: `print(wbt_tool_parameters("slope"))`
+mapviewOptions(fgb = FALSE)
+sf::sf_use_s2(use_s2 = FALSE)
+```
+
+```{css, echo=FALSE, class.source = 'foldable'}
+div.column {
+    display: inline-block;
+    vertical-align: top;
+    width: 50%;
+}
+
+#TOC::before {
+  content: "";
+  display: block;
+  height:200px;
+  width: 200px;
+  background-image: url('https://raw.githubusercontent.com/seamusrobertmurphy/map-templates/refs/heads/main/assets/outputs/06-watershed-3D.png');
+  background-size: contain;
+  background-position: 50% 50%;
+  padding-top: 80px !important;
+  background-repeat: no-repeat;
+}
+```
+
+## 2.0 Overview
+
+```{r}
+
+library(rFVS)
+
+
+```
+
+

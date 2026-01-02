@@ -4,7 +4,10 @@ format:
     toc: true
     toc-location: right
     toc-depth: 3
-    number-sections: false
+    toc-expand: true 
+    toc-title: "**Contents**"
+    highlight-style: pygments
+    page-layout: article
 ---
 # Preface {.unnumbered}
 
