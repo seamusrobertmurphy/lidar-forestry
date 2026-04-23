@@ -107,18 +107,21 @@ div.column {
 
 ### Import LiDAR
 
+The DTM must be rasterised from the **pre-normalisation** cloud. Running `rasterize_terrain` on a height-normalised LAS flattens every ground return to Z ≈ 0 and returns a zero DTM, which then silently collapses every downstream terrain covariate. The reproducible snippet below uses lidR's built-in `Topography.laz` so it executes in any environment; for the Carr AOI the DTM is produced from the classified, pre-normalisation cloud inside `scripts/rebuild_sierra.R` and saved to `../data/dtm_1m.tif`.
+
 ```{r}
 #| eval: false
-las <- lidR::readALSLAS("../data/las_1ha.laz")
-dtm <- lidR::rasterize_terrain(las, res = 0.5, algorithm = tin())
-lidR::plot_dtm3d(dtm, bg = "white")
+topo <- system.file("extdata", "Topography.laz", package = "lidR")
+las  <- lidR::readLAS(topo, filter = "-drop_z_below 0")
+las  <- lidR::classify_ground(las, lidR::csf(sloop_smooth = TRUE, 0.5, 1))
 
-terra::writeRaster(dtm, "../data/dtm_1m.tif", overwrite = TRUE)
+dtm  <- lidR::rasterize_terrain(las, res = 1, lidR::tin())
+lidR::plot_dtm3d(dtm, bg = "white")
 ```
 
 ### Terrain Covariates
 
-Derive slope and aspect from the DTM. Transform aspect to northness (cosine) and eastness (sine) to avoid circular-variable issues.
+Derive slope and aspect from the DTM. Transform aspect to northness (cosine) and eastness (sine) to avoid circular-variable issues. Read the Carr DTM straight from disk — it was written by `scripts/rebuild_sierra.R` from the pre-normalisation cloud.
 
 ```{r}
 #| eval: false
@@ -374,59 +377,105 @@ cat("Test-set RMSE:",   round(rf_rmse_test, 2), "m^3/ha\n")
 
 ![](../assets/PNG/biomass_cv_scatter.png){fig-align="center" width="75%"}
 
-### Operational Results (BC reference)
+### Model Comparison
 
-For operational context, the table below reports the author's original performance figures from the [EFI model assessment pipeline](https://github.com/seamusrobertmurphy/enhanced-forest-inventory-model-assessment) on 5,264 BC FAIB permanent sample plots, 80/20 train-test + 10-fold CV. These numbers are reproduced here as a reference; the Carr simulation above uses a much smaller synthetic sample and should not be compared directly.
-
-| Model | Full RMSE | CV RMSE | Full MAE | RMSE Ratio |
-|:------|----------:|--------:|---------:|-----------:|
-| RF (e1071, mtry=3, ntree=50)        |  5.6 | 12.8 |  3.7 | 0.42 |
-| RF (caret, mtry=3, ntree=500)       |  5.2 | ---  |  3.4 | 0.02 |
-| SVM Radial (epsilon=0.02, C=20)     |  5.9 |  9.9 |  3.5 | 0.59 |
-| SVM Radial (epsilon=0.10, C=20)     | 10.8 | 14.0 |  9.4 | 0.78 |
-| Ensemble GLMnet (alpha=0.10)        |  --- | 13.7 |  --- | ---  |
-| SVM Linear                          | 41.2 | 213  | 30.0 | 0.19 |
-| GLM (caret)                         | 40.9 | 216  | 30.7 | 0.19 |
-
-: Model comparison for WSVHA prediction (m³/ha), BC FAIB reference run. {#tbl-model-comparison}
-
-The RF (caret, 500 trees) achieves the lowest full-data RMSE but an RMSE ratio of 0.02, a clear sign of overfitting. The SVM Radial with tuned epsilon strikes the best balance: full RMSE of 5.9 m³/ha and CV RMSE of 9.9 m³/ha. Linear models (SVM Linear, GLM) failed entirely, with CV RMSE exceeding 200 m³/ha.
-
-For the Carr 1 ha demonstration the 300-tree RF on 150 simulated plots gives test-set RMSE near 110 m³/ha and R² near 0.91 — inflated because the plot response is synthesised from the covariates themselves. Treat this as a pipeline smoke-test, not a performance benchmark.
-
-### Univariate Predictor Analysis (BC reference)
-
-Simple linear regressions of each covariate against WSVHA on the BC reference dataset:
-
-| Predictor | R² | Coefficient | p-value |
-|:----------|---:|----------:|--------:|
-| lead_htop      | 0.6508 | 20.683 | < 0.0001 |
-| elev           | 0.0110 | -0.095 | < 0.0001 |
-| asp_cos        | 0.0050 | 15.197 | < 0.001  |
-| species_class  | 0.0025 |  6.584 | < 0.001  |
-| slope          | 0.0013 | -0.517 | 0.0009   |
-| asp_sin        | < 0.001|  1.535 | 0.59     |
-| stemsha_L      | < 0.001| -0.001 | 0.47     |
-
-: Univariate linear regression of each predictor against WSVHA (BC FAIB). {#tbl-univariate}
-
-LiDAR-derived canopy height alone explains 65% of variance in whole stem volume. All terrain and species variables contribute less than 2% individually, though they improve ensemble predictions through interaction effects.
-
-------------------------------------------------------------------------
-
-## 4.9 Validation Sites (BC reference) {#sec-validation}
-
-Independent validation in the BC workflow used recently harvested blocks at Quesnel Lake where pre-harvest cruise data existed. That validation is retained here as a pointer to the original pipeline:
+Extend the single-RF baseline above by fitting six additional algorithms on `plot_cov` — two random forests, two kernel SVMs, a GLM, and a GLMnet ensemble — each with 10-fold cross-validation and BoxCox/centre/scale preprocessing. The pipeline is reproducible via `scripts/build_model_comparison.R` and writes its results to `data/model_comparison.csv`.
 
 ```{r}
 #| eval: false
-# covs_quesnel <- raster::stack("../data/covs_quesnel.tif")
-# wsvha_quesnel <- raster::predict(covs_quesnel, tunedModel_rf)
-# wsvha_quesnel[wsvha_quesnel <= 0] <- 0
-# raster::writeRaster(wsvha_quesnel, "../data/wsvha_quesnel.tif", overwrite = TRUE)
+library(caret); library(kernlab); library(e1071)
+library(randomForest); library(caretEnsemble)
+
+preds <- c("elev", "slope", "asp_cos", "asp_sin", "chm", "species")
+df    <- plot_cov[, c(preds, "wsvha_L")]
+X     <- plot_cov[, preds]; y <- plot_cov$wsvha_L
+cv10  <- caret::trainControl(method = "cv", number = 10,
+                             savePredictions = "final")
+pp    <- c("BoxCox", "center", "scale")
+
+rf_e1071   <- e1071::tune.randomForest(
+  X, y, mtry = 2:6, ntree = 50,
+  tunecontrol = e1071::tune.control(sampling = "cross", cross = 10))
+
+rf_caret   <- caret::train(wsvha_L ~ ., data = df, method = "rf",
+                           metric = "RMSE", tuneLength = 6,
+                           trControl = cv10, preProcess = pp)
+
+svm_radial <- caret::train(wsvha_L ~ ., data = df, method = "svmRadial",
+                           metric = "RMSE", tuneLength = 6,
+                           trControl = cv10, preProcess = pp)
+
+svm_linear <- caret::train(wsvha_L ~ ., data = df, method = "svmLinear",
+                           metric = "RMSE", tuneLength = 6,
+                           trControl = cv10, preProcess = pp)
+
+glm_caret  <- caret::train(wsvha_L ~ ., data = df, method = "glm",
+                           metric = "RMSE",
+                           trControl = cv10, preProcess = pp)
+
+mlist      <- caretEnsemble::caretList(
+  wsvha_L ~ ., data = df, trControl = cv10,
+  methodList = c("glm", "svmLinear", "rf"),
+  tuneLength = 3, preProcess = pp, continue_on_fail = TRUE)
+ensemble   <- caretEnsemble::caretStack(
+  mlist, method = "glmnet", metric = "RMSE",
+  trControl = caret::trainControl(method = "cv", number = 10,
+                                  savePredictions = "final"),
+  tuneLength = 4)
 ```
 
-Full pipeline code and results are available in the [EFI full pipeline repo](https://github.com/seamusrobertmurphy/enhanced-forest-inventory-full-pipeline).
+| Model | Full RMSE | CV RMSE | Full MAE | RMSE Ratio |
+|:------|----------:|--------:|---------:|-----------:|
+| RF (e1071, mtry=6, ntree=50)        |  15.22 |  46.98 |  11.76 | 0.32 |
+| RF (caret, mtry=6, ntree=500)       |  14.47 |  32.61 |  11.14 | 0.44 |
+| SVM Radial (C=8.00, σ=0.23)         | 169.08 | 176.47 | 119.09 | 0.96 |
+| SVM Linear (caret)                  | 148.81 | 155.41 | 101.37 | 0.96 |
+| GLM (caret)                         |  52.98 |  54.78 |  38.32 | 0.97 |
+| Ensemble GLMnet                     |   ---  |  33.88 |   ---  | ---  |
+
+: Model comparison for WSVHA prediction (m³/ha) on the Sierra `plot_cov` sample. Units are m³/ha. {#tbl-model-comparison}
+
+Both random forests dominate on this sample with CV RMSE of 33–47 m³/ha. Their RMSE ratios of 0.32–0.44 expose the usual overfitting gap between full-data and held-out error, steeper here because the simulated response is smooth and tree ensembles memorise it easily. Kernel SVM and linear methods cannot recover the pmax() floor at zero and land with CV RMSE around 150–180 m³/ha. The GLMnet stack settles near the better RF at 33.88 m³/ha, but without clear gain over `rf_caret` alone. Against the 300-tree RF in §4.6 — test RMSE about 110 m³/ha — the tuned models cut held-out error by roughly a third.
+
+### Univariate Predictor Analysis
+
+Simple linear regressions of each retained covariate against WSVHA on the Sierra `plot_cov` sample:
+
+```{r}
+#| eval: false
+for (v in c("chm", "elev", "asp_cos", "slope", "asp_sin")) {
+  m <- lm(as.formula(paste("wsvha_L ~", v)), data = plot_cov)
+  s <- summary(m)
+  cat(sprintf("%-8s  R2=%.4f  beta=%8.3f  p=%.3g\n",
+              v, s$r.squared, coef(m)[2], s$coefficients[2, 4]))
+}
+```
+
+| Predictor | R² | Coefficient | p-value |
+|:----------|---:|----------:|--------:|
+| chm       | 0.9876 |  18.133 | 1.7 × 10⁻¹³⁰ |
+| slope     | 0.0369 |   6.506 | 0.025 |
+| asp_sin   | 0.0015 | −23.867 | 0.66  |
+| elev      | 0.0012 |  −0.946 | 0.68  |
+| asp_cos   | 0.0007 | −26.139 | 0.75  |
+
+: Univariate linear regression of each predictor against simulated WSVHA on the Sierra sample. {#tbl-univariate}
+
+CHM alone explains 99% of variance — a direct consequence of the §4.4 response, which is almost entirely `18 * chm + noise`. Slope picks up a marginal signal from its 0.8 coefficient; the remaining terrain terms sit at the noise floor. `species` is omitted because after the 1.3 m CHM filter every retained plot falls on the forested class, leaving no variance to regress on. Treat the numbers as a demonstration of the univariate workflow; on real plot data the signal is distributed across predictors and the ensemble models in @tbl-model-comparison are what actually earn their keep.
+
+------------------------------------------------------------------------
+
+## 4.9 Independent Validation {#sec-validation}
+
+The pattern for independent validation is to predict the trained model onto a covariate stack from a different AOI whose field cruise or harvest totals are already known, then compare the cumulative predicted volume against the cruise. A stub is retained here as a placeholder for that step:
+
+```{r}
+#| eval: false
+# covs_val   <- terra::rast("../data/covs_val.tif")
+# wsvha_val  <- terra::predict(covs_val, rf)
+# wsvha_val  <- terra::clamp(wsvha_val, lower = 0)
+# terra::writeRaster(wsvha_val, "../data/wsvha_val.tif", overwrite = TRUE)
+```
 
 ------------------------------------------------------------------------
 

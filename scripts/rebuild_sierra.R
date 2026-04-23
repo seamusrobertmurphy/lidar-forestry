@@ -112,6 +112,13 @@ text(0, 1, paste(utils::head(txt, 22), collapse = "\n"),
      adj = c(0, 1), family = "mono", cex = 0.72)
 dev.off()
 
+## DTM from pre-normalisation cloud. Must precede normalize_height: running
+## rasterize_terrain on a height-normalised LAS collapses Z to ~0 everywhere
+## and produces a flat DTM (the bug that emptied the terrain covariate stack).
+dtm <- rasterize_terrain(las_csf_sor, res = 0.5, tin())
+terra::writeRaster(dtm, file.path(data_dir, "dtm_1m.tif"),  overwrite = TRUE)
+terra::writeRaster(dtm, file.path(data_dir, "elev_1m.tif"), overwrite = TRUE)
+
 ## Normalise
 las_norm <- normalize_height(las_csf_sor, knnidw())
 
@@ -199,10 +206,6 @@ pngdev("stem_detect_G.png")
 terra::plot(chm_95h, col = RColorBrewer::brewer.pal(9, "YlGn"),
             main = "95th-percentile canopy height")
 dev.off()
-
-dtm <- rasterize_terrain(las_norm, res = 0.5, tin())
-terra::writeRaster(dtm, file.path(data_dir, "dtm_1m.tif"), overwrite = TRUE)
-terra::writeRaster(dtm, file.path(data_dir, "elev_1m.tif"), overwrite = TRUE)
 
 slope_deg <- terra::terrain(dtm, "slope",  unit = "degrees", neighbors = 8)
 slope_pct <- terra::clamp(tan(slope_deg * pi/180) * 100, 0, 100)
