@@ -24,7 +24,7 @@ citeproc: true
 
 ## 3.0 Overview
 
-Canopy Height Models (CHM) represent vertical distance from ground to canopy top across the landscape. CHMs derived from normalized LiDAR point clouds serve as primary inputs for tree detection, biomass estimation, and forest inventory. This chapter documents operational workflows for CHM aggregation, dominant-height extraction, and quality control procedures using the Medina River 1 ha AOI normalized in Chapter 1.
+Canopy Height Models (CHM) represent vertical distance from ground to canopy top across the landscape. CHMs derived from normalised LiDAR point clouds serve as primary inputs for tree detection, biomass estimation, and forest inventory. This chapter documents operational workflows for CHM aggregation, dominant-height extraction, and quality control using the Carr Fire 1 ha AOI normalised in Chapter 1.
 
 ------------------------------------------------------------------------
 
@@ -89,7 +89,7 @@ div.column {
   display: block;
   height:200px;
   width: 200px;
-  background-image: url('https://raw.githubusercontent.com/seamusrobertmurphy/lidar-forestry/refs/heads/feature/04-22/assets/PNG/stem_detect_G.png');
+  background-image: url('../assets/PNG/stem_detect_G.png');
   background-size: contain;
   background-position: 50% 50%;
   padding-top: 80px !important;
@@ -209,7 +209,7 @@ print(validation)
 
 ## 3.4 Build Mosaic
 
-Merge all operating areas into single product for Chapter 4. For the Medina demonstration the AOI is a single tile, so the 95th-percentile raster from §3.2 is the input to the biomass model in Chapter 4.
+Merge all operating areas into a single product for Chapter 4. For the Carr demonstration the AOI is a single tile, so the 95th-percentile raster from §3.2 is the input to the biomass model in Chapter 4.
 
 ```{r}
 #| eval: false

@@ -27,7 +27,7 @@ citeproc: true
 
 Raw LiDAR data arrives as massive unclassified point clouds (.xyz, .laz format) containing ground, vegetation, buildings, and noise. This chapter documents the preprocessing pipeline: catalog management, ground classification, noise removal, DTM generation, and height normalization. Output is analysis-ready normalized point clouds for tree detection.
 
-The working example in this and subsequent chapters uses a public-domain UAS survey of an erosion-prone area north of Medina River Natural Area, San Antonio, TX, acquired 2022-07-08 by the USGS Oklahoma-Texas Water Science Center and released under a US Government public-domain mark ([DOI:10.5066/P9KN8RG0](https://doi.org/10.5066/P9KN8RG0)). The source tile is ~80 ha at ~206 pts/m² in NAD83(2011) / UTM 14N with NAVD88 heights; figures are built from a central 1 ha clip.
+The working example in this and subsequent chapters uses the airborne lidar tile `10SGH1587` from the USGS 3DEP Lidar Point Cloud collection flown over the Carr Hirz Delta Fires burn scar in Shasta County, northern California. The data are Quality Level 1 linear-mode lidar, accepted for the 3DEP program with ≤ 9.8 cm absolute vertical accuracy at 95 % CI in open terrain. The tile covers 1 km × 1 km at \~78 pts/m² (78.3 million points) and is downloadable from the [USGS Staged Elevation FTP directory](https://rockyweb.usgs.gov/vdelivery/Datasets/Staged/Elevation/LPC/Projects/CA_CarrHirzDeltaFires_2019_B19/CA_CarrHirzDeltaFires_2_2019/). Figures below are built from a 1 ha clip centred on the densest-canopy cell in the tile, which keeps every downstream chunk under a million points.
 
 **Note**: Ground classification and DTM generation on large catalogs can require full-day processing times. Tiling configuration and indexing quality directly impact performance.
 
@@ -81,7 +81,7 @@ div.column {
   display: block;
   height:200px;
   width: 200px;
-  background-image: url('https://raw.githubusercontent.com/seamusrobertmurphy/lidar-forestry/refs/heads/feature/04-22/assets/PNG/las_tile_medina_norm.png');
+  background-image: url('../assets/PNG/las_tile_sierra_norm.png');
   background-size: contain;
   background-position: 50% 50%;
   padding-top: 80px !important;
@@ -93,7 +93,7 @@ div.column {
 
 ## 1.1 Catalog Management
 
-`LAScatalog` handles datasets too large for memory by partitioning data into chunks and processing sequentially or in parallel. For the Medina tile we read the single LAZ and clip a 1 ha AOI near its centre.
+`LAScatalog` handles datasets too large for memory by partitioning the data into chunks and processing them sequentially or in parallel. The Carr Fire tile is a single 1 km × 1 km LAZ; we index it, read a thinned scan of the whole tile, pick the 25 m cell with the tallest 95th-percentile canopy, and clip a 100 m × 100 m AOI around that centroid. This keeps every chunk below one million points without losing the tree-rich patch.
 
 ```{r import-catalog}
 #| warning: false
@@ -102,35 +102,38 @@ div.column {
 #| echo: true
 #| eval: false
 
-# Read catalog from a single LAZ file.
-las_ctg_medina <- readLAScatalog(
-  "../assets/data/MNA_pointcloud_20220708.laz",
-  select = "xyzrn"
-)
-opt_chunk_size(las_ctg_medina)   <- 500
-opt_chunk_buffer(las_ctg_medina) <- 10
-is.indexed(las_ctg_medina)
-las_check(las_ctg_medina)
-plot(las_ctg_medina, chunk = TRUE)
+src <- "../assets/data/USGS_LPC_CA_SierraNevada_B22_10SGH1587.laz"
 
-# Centre-AOI clip used throughout the remaining chapters (1 ha).
-bb   <- sf::st_bbox(las_ctg_medina)
-cx   <- mean(c(bb["xmin"], bb["xmax"]))
-cy   <- mean(c(bb["ymin"], bb["ymax"]))
-las_raw <- clip_rectangle(
-  las_ctg_medina,
+ctg <- readLAScatalog(src, select = "xyzcr",
+                     filter = "-thin_with_grid 0.5")
+opt_chunk_size(ctg)   <- 500
+opt_chunk_buffer(ctg) <- 10
+is.indexed(ctg)
+las_check(ctg)
+
+# Coarse scan: 95p Z on a 25 m grid to locate the densest canopy
+scan    <- readLAS(src, select = "xyz",
+                   filter = "-keep_every_nth 20")
+z95_grid <- pixel_metrics(scan, ~quantile(Z, .95, na.rm = TRUE),
+                          res = 25)
+pick <- which.max(terra::values(z95_grid))
+xy   <- terra::xyFromCell(z95_grid, pick)
+cx   <- xy[1, "x"]; cy <- xy[1, "y"]
+
+las_raw <- clip_rectangle(ctg,
   cx - 50, cy - 50, cx + 50, cy + 50
 )
 ```
 
 **Key parameters**:
 
--   Buffer = 10m minimizes edge effects
--   Chunk size = 500m works for the compact Medina tile (758 × 1053 m)
--   For multi-tile catalogs, use `opt_filter('-drop_class 19')` to remove overlapping points and `filter_duplicates()`
+-   Buffer = 10 m minimises edge effects
+-   Chunk size = 500 m works for the 1 km Carr tile
+-   `-thin_with_grid 0.5` halves in-memory density for scans; the final clip is read at full density
+-   For multi-tile catalogs add `opt_filter('-drop_class 19')` to remove overlapping points
 
 ::: {style="overflow: auto;"}
-![Raw Z histogram](../assets/PNG/unnamed-chunk-4-1.png){alt="Raw Z histogram" style="float: left; margin-right: 2%;" width="43.5%"} ![DTM processing](../assets/PNG/las_ctg_medina_dtm_processing.png){alt="DTM processing" style="float: left;" width="50.2%"}
+![Raw Z histogram](../assets/PNG/unnamed-chunk-4-1.png){alt="Raw Z histogram" style="float: left; margin-right: 2%;" width="43.5%"} ![Catalog chunk plot](../assets/PNG/las_ctg_sierra_dtm_processing.png){alt="Catalog chunks" style="float: left;" width="50.2%"}
 :::
 
 ![](../assets/PNG/tas_ctg_check.png){fig-align="center" width="95%"}
@@ -139,7 +142,7 @@ las_raw <- clip_rectangle(
 
 ## 1.2 Ground Classification
 
-In this section, we compare performances of the Cloth Simulation Filter (`csf()`) with the Progressive Morphological Filter (`pmf()`). The `csf()` algorithm tends to produce a smoother DTM, particularly across variable topography [@zhang2016]. For the Medina tile — which has ~56 m of relief over 100 m of AOI — the CSF output is visibly cleaner and is carried downstream.
+In this section we compare the Cloth Simulation Filter (`csf()`) with the Progressive Morphological Filter (`pmf()`). The CSF algorithm tends to produce a smoother DTM across variable topography [@zhang2016]. For the Carr tile — steep post-fire slopes with roughly 60 m of relief across the 1 ha AOI — CSF is visibly cleaner and is carried downstream.
 
 ```{r}
 #| warning: false
@@ -161,7 +164,7 @@ las_pmf <- classify_ground(
 ```
 
 ::: {style="overflow: auto;"}
-![CSF ground](../assets/PNG/las_tile_medina_csf.png){alt="CSF ground" style="float: left; margin-right: 2%;" width="49%"} ![PMF ground](../assets/PNG/las_tile_medina_pmf.png){alt="PMF ground" style="float: left;" width="49%"}
+![CSF ground](../assets/PNG/las_tile_sierra_csf.png){alt="CSF ground" style="float: left; margin-right: 2%;" width="49%"} ![PMF ground](../assets/PNG/las_tile_sierra_pmf.png){alt="PMF ground" style="float: left;" width="49%"}
 :::
 
 ------------------------------------------------------------------------
@@ -194,19 +197,19 @@ las_pmf_sor <- filter_poi(las_pmf_so, Classification != LASNOISE)
 ```
 
 ::: {style="overflow: auto;"}
-![Noise removal (CSF)](../assets/PNG/las_tile_medina_csf_so.png){alt="Noise removal CSF" style="float: left; margin-right: 2%;" width="49%"} ![Noise removal (PMF)](../assets/PNG/las_tile_medina_pmf_so.png){alt="Noise removal PMF" style="float: left;" width="49%"}
+![Noise removal (CSF)](../assets/PNG/las_tile_sierra_csf_so.png){alt="Noise removal CSF" style="float: left; margin-right: 2%;" width="49%"} ![Noise removal (PMF)](../assets/PNG/las_tile_sierra_pmf_so.png){alt="Noise removal PMF" style="float: left;" width="49%"}
 :::
 
 ------------------------------------------------------------------------
 
 ## 1.4 Digital Terrain Model
 
-Rasterization is empirically paramount to terrain analysis as it shapes all subsequent height-based estimates. The Inverse Distance Weighting (`knnidw`) algorithm was employed due to its efficiency, robustness, and known sensitivity to lake anomalies [@tu2020]. Parameters:
+Rasterisation is paramount to terrain analysis because it shapes every subsequent height-based estimate. The Inverse Distance Weighting (`knnidw`) algorithm is used here for its efficiency and robustness [@tu2020]. Parameters:
 
 -   Default maximum radius of 50 m
 -   Neighborhood of `10`
 -   Inverse distance weighting power of `2`
--   Resolution of `0.5 m` (matches the dense UAS point spacing)
+-   Resolution of `0.5 m` (matches the 78 pts/m² density)
 
 ```{r}
 #| warning: false
@@ -228,10 +231,14 @@ terra::plot(hs, col = grey(0:100/100), legend = FALSE)
 ```
 
 ::: {style="overflow: auto;"}
-![DTM (CSF + SOR)](../assets/PNG/las_tile_medina_csf_sor_dtm.png){alt="DTM CSF" style="float: left; margin-right: 2%;" width="49%"} ![DTM (PMF + SOR)](../assets/PNG/las_tile_medina_pmf_sor_dtm.png){alt="DTM PMF" style="float: left;" width="47.7%"}
+![DTM (CSF + SOR)](../assets/PNG/las_tile_sierra_csf_sor_dtm.png){alt="DTM CSF" style="float: left; margin-right: 2%;" width="49%"} ![DTM (PMF + SOR)](../assets/PNG/las_tile_sierra_pmf_sor_dtm.png){alt="DTM PMF" style="float: left;" width="47.7%"}
 :::
 
-**Result**: CSF produces a visibly smoother DTM across the Medina relief gradient.
+**Result**: CSF produces a visibly smoother DTM across the Carr relief gradient.
+
+Compare the Carr tile DTM with the classic lidR Topography sample for reference — the mesh render below comes from `lidR::extdata/Topography.laz`, a frequently reused teaching tile.
+
+![lidR Topography sample — 3D DTM mesh](../assets/PNG/lidr_sample_topography_dtm3d.png){fig-align="center" width="75%"}
 
 ------------------------------------------------------------------------
 
@@ -254,18 +261,22 @@ lidR::writeLAS(las_norm, "../data/las_1ha.laz")
 ```
 
 ::: {style="overflow: auto;"}
-![Normalized point cloud](../assets/PNG/las_tile_medina_norm.png){style="float: left; margin-right: 2%;" width="49%"} ![Ground height distribution](../assets/PNG/las_tile_medina_norm_histogram.png){alt="Ground height distribution" style="float: left;" width="43.5%"}
+![Normalized point cloud](../assets/PNG/las_tile_sierra_norm.png){style="float: left; margin-right: 2%;" width="49%"} ![Ground height distribution](../assets/PNG/las_tile_sierra_norm_histogram.png){alt="Ground height distribution" style="float: left;" width="43.5%"}
 :::
 
-**Validation**: Ground point histogram should center near zero. Deviations indicate DTM issues or algorithm failure in complex terrain.
+**Validation**: the ground-point histogram should centre near zero. Deviations indicate DTM issues or algorithm failure in complex terrain.
+
+The `lidR::extdata/MixedConifer.laz` sample provides a dramatic illustration of what a normalised canopy surface looks like once pit-free triangulation is applied — the kernel-density "net" below shows individual crowns rising above the ground plane.
+
+![MixedConifer CHM net (lidR sample)](../assets/PNG/lidr_sample_mixedconifer_chm_net.png){fig-align="center" width="70%"}
 
 ------------------------------------------------------------------------
 
 ### Runtime Notes
 
--   311 tiles processed in \~24 hours (high-performance system) for the original BC demonstration; the Medina 1 ha AOI completes in under two minutes on a laptop.
+-   311 tiles processed in \~24 hours (high-performance system) on the author's original BC demonstration; the Carr 1 ha AOI completes in under three minutes on a laptop.
 -   Bottlenecks: ground classification (60%), DTM interpolation (30%), I/O overhead (10%).
--   Process chunks sequentially if RAM \< 32GB
+-   Process chunks sequentially if RAM \< 32 GB
 -   Increase chunk buffer if edge artifacts visible
 -   Use `opt_independent_files()` for parallel tasks
 

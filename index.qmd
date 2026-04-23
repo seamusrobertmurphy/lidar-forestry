@@ -9,6 +9,7 @@ format:
     highlight-style: pygments
     page-layout: article
 ---
+
 # Preface {.unnumbered}
 
 ------------------------------------------------------------------------
@@ -80,7 +81,7 @@ div.column {
   display: block;
   height:200px;
   width: 200px;
-  background-image: url('https://raw.githubusercontent.com/seamusrobertmurphy/lidar-forestry/refs/heads/main/assets/PNG/graphical-abstract-medina.png');
+  background-image: url('./assets/PNG/graphical-abstract-medina.png');
   background-size: contain;
   background-position: 50% 50%;
   padding-top: 1px !important;
@@ -88,11 +89,13 @@ div.column {
 }
 ```
 
-Airborne LiDAR is becoming a standard tool for forest inventory operations, yet the path from raw sensor data to validated forest metrics remains challenging. When LiDAR data arrives from field crews, bush pilots, or third-party providers, it typically consists of massive unclassified point clouds in .xyz or .laz format, sometimes exceeding 50 billion points, with no ground classification, height normalization, or quality control. Converting these raw data into usable forest products requires a systematic workflow spanning data preprocessing, terrain modeling, tree detection, canopy characterization, and biomass estimation.
+Airborne LiDAR is becoming a standard tool for forest inventory operations, yet the path from raw sensor data to validated forest metrics remains challenging. When LiDAR data arrives from field crews, bush pilots, or third-party providers, it typically consists of massive unclassified point clouds in .xyz or .laz format, sometimes exceeding 50 billion points, with no ground classification, height normalisation, or quality control. Converting raw data into usable forest products requires a systematic workflow spanning data preprocessing, terrain modelling, tree detection, canopy characterisation, and biomass estimation.
 
 This mini-book documents a complete operational workflow for processing airborne LiDAR data for forest inventory applications. It is structured as a sequential pipeline where each chapter builds directly on outputs from the previous stage. The workflow reflects real-world forestry LiDAR projects where computational efficiency, processing time, and validation against field measurements are critical considerations.
 
-These workflows uses R and the `lidR` [@roussel2019lidr; @roussel2020] and `ForestTools` packages [@ForestTools] to demonstrate processing steps. Code examples are designed for operational use, addressing practical issues such as managing large datasets, optimizing computational performance, and handling edge effects in tiled processing. Dependencies include `sf` [@pebesma2021package; @pebesma2018simple; @pebesma2023spatial] and `terra` packages [@hijmans2023terra], used to support spatial analysis and visualization. All dependencies are declared below in environment setup chunk.
+The working example is a 1 ha clip from the point cloud tile `10SGH1587` flown over the Carr Hirz Delta Fires burn site in Shasta County, California. The full catalog is distributed through the [USGS Staged Elevation FTP directory](#0); along with the data validation reports and metadata.
+
+The workflow uses R with `lidR` [@roussel2019lidr; @roussel2020] and `ForestTools` [@ForestTools]. Code examples are designed for operational use: large datasets, tile processing, and edge effects. Spatial operations lean on `sf` [@pebesma2021package; @pebesma2018simple; @pebesma2023spatial] and `terra` [@hijmans2023terra]. All dependencies are declared in the environment-setup chunk below.
 
 ------------------------------------------------------------------------
 
@@ -116,7 +119,7 @@ Accurate canopy height models (CHMs) are essential for forest inventory metrics.
 
 With validated CHMs and stem maps, aboveground biomass can be estimated. This chapter focuses on model selection, allometric equation application, bias correction, and uncertainty quantification. The goal is achieving root mean square error (RMSE) below operational thresholds while understanding model limitations across forest conditions. Model diagnostics identify when predictions fail and why.
 
-![](https://raw.githubusercontent.com/seamusrobertmurphy/lidar-forestry/refs/heads/main/assets/PNG/graphical-abstract-medina.png){fig-align="center" width="95%"}
+![](./assets/PNG/graphical-abstract-medina.png){fig-align="center" width="95%"}
 
 ------------------------------------------------------------------------
 
