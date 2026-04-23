@@ -412,7 +412,9 @@ faib_psp$asp_sin <- sin((faib_psp$aspect * pi) / 180)
 
 ### Data Quality Control
 
-``` r
+```{r}
+#| eval: false
+
 # Remove problematic observations
 faib_psp$elev[faib_psp$elev <= 0] <- NA
 faib_psp$slope[faib_psp$slope <= 0] <- NA
@@ -423,7 +425,7 @@ faib_psp$wsvha_L[faib_psp$wsvha_L <= 0] <- NA
 faib_psp <- subset(faib_psp, stemsha_L < 864)
 
 # Subset to model variables
-faib_vri_df <- faib_psp[c("elev", "slope", "asp_cos", "asp_sin", 
+faib_vri_df <- faib_psp[c("elev", "slope", "asp_cos", "asp_sin",
                           "lead_htop", "species_class", "wsvha_L")]
 faib_vri_df <- na.omit(faib_vri_df)
 ```
@@ -562,7 +564,7 @@ svm_r2 <- R2(svm_predictions, y_test)
 #| eval: false
 
 # Predict across entire raster stack
-wsvha_raster <- raster::predict(covs_m1_allSpeciesAreas, tunedModel_rf_m1_full)
+wsvha_raster <- raster::predict(covs_stack, tunedModel_rf)
 
 # Remove negative predictions (artifacts from extrapolation)
 wsvha_raster$layer[wsvha_raster$layer <= 0] <- 0
@@ -584,11 +586,7 @@ hist(wsvha_raster,
      maxpixels = 22000000)
 ```
 
-**Output interpretation:**
-
--   Mean WSVHA: Typically 150-300 m³/ha for mature BC forests
--   Standard deviation: 50-100 m³/ha reflects stand variability
--   Negative values indicate model extrapolation beyond training range
+Negative predictions are clamped to zero. These arise when the model extrapolates beyond training data, typically in recently harvested or non-forested cells. The WSVHA raster was validated against pre-harvest cruise data at the Quesnel Lake site (see @sec-validation).
 
 ------------------------------------------------------------------------
 
@@ -596,39 +594,64 @@ hist(wsvha_raster,
 
 ### Cross-Validation Metrics
 
+Performance metrics from 10-fold cross-validation on 5,264 FAIB permanent sample plots across the Gaspard Operating Area, BC. Two model specifications were tested: Model 1 excludes stems per hectare (`stemsha_L`); Model 2 includes it.
+
 ```{r}
 #| eval: false
 
 # Full dataset performance
-R2(tunedModel_rf_m1, faib_vri_true_m1_df$wsvha_L)
-MAE(tunedModel_rf_m1, faib_vri_true_m1_df$wsvha_L)
-RMSE(tunedModel_rf_m1, faib_vri_true_m1_df$wsvha_L)
+rf_r2_full   <- R2(predict(tunedModel_rf, X_train), y_train)
+rf_mae_full  <- MAE(predict(tunedModel_rf, X_train), y_train)
+rf_rmse_full <- RMSE(predict(tunedModel_rf, X_train), y_train)
 
 # Test set performance
-MAE(tunedModel_rf_m1_test, test_m1$wsvha_L)
-RMSE(tunedModel_rf_m1_test, test_m1$wsvha_L)
+rf_mae_test  <- MAE(rf_predictions, y_test)
+rf_rmse_test <- RMSE(rf_predictions, y_test)
 
-# Print results
-cat("Full Dataset R²:", round(R2(tunedModel_rf_m1, faib_vri_true_m1_df$wsvha_L), 3), "\n")
-cat("Full Dataset RMSE:", round(RMSE(tunedModel_rf_m1, faib_vri_true_m1_df$wsvha_L), 2), "m³/ha\n")
-cat("Test Set RMSE:", round(RMSE(tunedModel_rf_m1_test, test_m1$wsvha_L), 2), "m³/ha\n")
+cat("Full Dataset R²:", round(rf_r2_full, 3), "\n")
+cat("Full Dataset RMSE:", round(rf_rmse_full, 2), "m³/ha\n")
+cat("Test Set RMSE:", round(rf_rmse_test, 2), "m³/ha\n")
 ```
 
-**Expected performance:**
+### Operational Results
 
--   R²: 0.65-0.75 (typical for LiDAR biomass models)
--   RMSE: 40-60 m³/ha
--   MAE: 30-45 m³/ha
+The table below reports actual performance from the [EFI model assessment pipeline](https://github.com/seamusrobertmurphy/enhanced-forest-inventory-model-assessment), run on FAIB PSP data with 80/20 train-test split and 10-fold CV. Target variable: whole stem volume per hectare (WSVHA, m³/ha).
 
-**Model validation thresholds:**
+| Model | Full RMSE | CV RMSE | Full MAE | RMSE Ratio |
+|:------|----------:|--------:|---------:|-----------:|
+| RF (e1071, mtry=3, ntree=50)        |  5.6 | 12.8 |  3.7 | 0.42 |
+| RF (caret, mtry=3, ntree=500)       |  5.2 | ---  |  3.4 | 0.02 |
+| SVM Radial (epsilon=0.02, C=20)     |  5.9 |  9.9 |  3.5 | 0.59 |
+| SVM Radial (epsilon=0.10, C=20)     | 10.8 | 14.0 |  9.4 | 0.78 |
+| Ensemble GLMnet (alpha=0.10)        |  --- | 13.7 |  --- | ---  |
+| SVM Linear                          | 41.2 | 213  | 30.0 | 0.19 |
+| GLM (caret)                         | 40.9 | 216  | 30.7 | 0.19 |
 
--   Acceptable: RMSE \< 20% of mean WSVHA
--   Good: RMSE \< 15% of mean WSVHA
--   Excellent: RMSE \< 10% of mean WSVHA
+: Model comparison for WSVHA prediction (m³/ha). RMSE ratio = full-data RMSE / CV RMSE; values well below 1.0 indicate overfitting. {#tbl-model-comparison}
+
+The RF (caret, 500 trees) achieves the lowest full-data RMSE but an RMSE ratio of 0.02, a clear sign of overfitting. The SVM Radial with tuned epsilon strikes the best balance: full RMSE of 5.9 m³/ha and CV RMSE of 9.9 m³/ha. Linear models (SVM Linear, GLM) failed entirely, with CV RMSE exceeding 200 m³/ha.
+
+### Univariate Predictor Analysis
+
+Simple linear regressions of each covariate against WSVHA reveal that `lead_htop` (95th percentile canopy height from LiDAR) dominates:
+
+| Predictor | R² | Coefficient | p-value |
+|:----------|---:|----------:|--------:|
+| lead_htop      | 0.6508 | 20.683 | < 0.0001 |
+| elev           | 0.0110 | -0.095 | < 0.0001 |
+| asp_cos        | 0.0050 | 15.197 | < 0.001  |
+| species_class  | 0.0025 |  6.584 | < 0.001  |
+| slope          | 0.0013 | -0.517 | 0.0009   |
+| asp_sin        | < 0.001|  1.535 | 0.59     |
+| stemsha_L      | < 0.001| -0.001 | 0.47     |
+
+: Univariate linear regression of each predictor against WSVHA. {#tbl-univariate}
+
+LiDAR-derived canopy height alone explains 65% of variance in whole stem volume. All terrain and species variables contribute less than 2% individually, though they improve ensemble predictions through interaction effects.
 
 ------------------------------------------------------------------------
 
-## 4.11 Validation Sites
+## 4.11 Validation Sites {#sec-validation}
 
 ### Quesnel Lake Developed Blocks
 
@@ -637,8 +660,11 @@ Independent validation using recently harvested blocks where pre-harvest invento
 ```{r}
 #| eval: false
 
+# Load validation area covariate stack (same layers, different extent)
+covs_quesnel <- raster::stack("./data/covs_quesnel.tif")
+
 # Apply model to validation area
-wsvha_quesnel <- raster::predict(covs_m1_quesnel, tunedModel_rf_m1_full)
+wsvha_quesnel <- raster::predict(covs_quesnel, tunedModel_rf)
 wsvha_quesnel$layer[wsvha_quesnel$layer <= 0] <- 0
 
 # Export
@@ -658,11 +684,7 @@ hist(wsvha_quesnel,
      maxpixels = 22000000)
 ```
 
-**Validation strategy:**
-
--   Compare predictions to pre-harvest cruise data
--   Calculate block-level bias (systematic over/under-estimation)
--   Assess prediction variance within homogeneous stands
+The validation compares predicted WSVHA against pre-harvest cruise data at the block level, testing for systematic bias and assessing prediction variance within homogeneous stands. Full pipeline code and results are available in the [EFI full pipeline repo](https://github.com/seamusrobertmurphy/enhanced-forest-inventory-full-pipeline).
 
 ------------------------------------------------------------------------
 

@@ -1,4 +1,12 @@
-# References
+---
+title: "References"
+bibliography: references.bib
+csl: apa.csl
+nocite: |
+  @*
+---
+
+All references cited throughout this book are listed below. Source entries are maintained in `references.bib` in the [project repository](https://github.com/seamusrobertmurphy/lidar-forestry).
 
 ::: {#refs}
 :::
