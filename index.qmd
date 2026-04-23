@@ -18,6 +18,7 @@ format:
 #| message: false
 #| error: false
 #| echo: false
+#| comment: NA
 
 pacman::p_load(
   "curl", 
@@ -47,10 +48,11 @@ tmap_options(max.raster = c(plot = 9500000, view = 10000000))
 
 ```{r}
 #| echo: false
+#| warning: false
+#| message: false
+#| error: false
 #| results: asis
 #| comment: NA
-#| warning: false
-#| error: false
 
 # Create icon links for author section
 fa_orcid <- fontawesome::fa("orcid", fill = "#A6CE39")
@@ -78,7 +80,7 @@ div.column {
   display: block;
   height:200px;
   width: 200px;
-  background-image: url('https://raw.githubusercontent.com/seamusrobertmurphy/lidar-forestry/refs/heads/feature/04-22/assets/PNG/graphical-abstract-medina.png');
+  background-image: url('https://raw.githubusercontent.com/seamusrobertmurphy/lidar-forestry/refs/heads/main/assets/PNG/graphical-abstract-medina.png');
   background-size: contain;
   background-position: 50% 50%;
   padding-top: 1px !important;
@@ -114,7 +116,7 @@ Accurate canopy height models (CHMs) are essential for forest inventory metrics.
 
 With validated CHMs and stem maps, aboveground biomass can be estimated. This chapter focuses on model selection, allometric equation application, bias correction, and uncertainty quantification. The goal is achieving root mean square error (RMSE) below operational thresholds while understanding model limitations across forest conditions. Model diagnostics identify when predictions fail and why.
 
-![](https://raw.githubusercontent.com/seamusrobertmurphy/lidar-forestry/refs/heads/feature/04-22/assets/PNG/graphical-abstract-medina.png){fig-align="center" width="95%"}
+![](https://raw.githubusercontent.com/seamusrobertmurphy/lidar-forestry/refs/heads/main/assets/PNG/graphical-abstract-medina.png){fig-align="center" width="95%"}
 
 ------------------------------------------------------------------------
 
