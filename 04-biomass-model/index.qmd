@@ -26,9 +26,9 @@ citeproc: true
 
 ## 4.0 Overview
 
-LiDAR-derived metrics enable wall-to-wall biomass and volume predictions when calibrated with field inventory data. This chapter demonstrates the complete workflow applied to the Medina River UAS tile from Chapter 1: covariate preparation, a simulated plot dataset, model training with cross-validation, and spatial prediction of whole-stem volume per hectare (WSVHA, m³/ha).
+LiDAR-derived metrics enable wall-to-wall biomass and volume predictions when calibrated with field inventory data. This chapter demonstrates the complete workflow on the Carr Fire 1 ha AOI from Chapter 1: covariate preparation, a simulated plot dataset, random-forest training with a holdout, and spatial prediction of whole-stem volume per hectare (WSVHA, m³/ha).
 
-The plot data below are **simulated** over the Medina AOI — the USGS UAS release is copyright-clear, but there are no accompanying field inventory plots at that site. The response surface is drawn from LiDAR-derived CHM + terrain + a synthetic species raster with additive Gaussian noise; this preserves the structure of the real workflow (plot → model → raster) without depending on proprietary BC FAIB/VRI layers.
+The plot data below are **simulated** over the Carr AOI — the USGS 3DEP release is copyright-clear, but no public field inventory plots accompany it. The response surface is drawn from LiDAR-derived CHM, terrain, and a synthetic species raster with additive Gaussian noise. This preserves the structure of the real workflow (plot → model → raster) without depending on proprietary BC FAIB/VRI layers.
 
 ### Environment Setup
 
@@ -93,7 +93,7 @@ div.column {
   display: block;
   height:200px;
   width: 200px;
-  background-image: url('https://raw.githubusercontent.com/seamusrobertmurphy/lidar-forestry/refs/heads/feature/04-22/assets/PNG/stem_detect_C.png');
+  background-image: url('../assets/PNG/stem_detect_C.png');
   background-size: contain;
   background-position: 50% 50%;
   padding-top: 1px !important;
@@ -158,7 +158,7 @@ terra::writeRaster(chm, "../data/chm_1m.tif", overwrite = TRUE)
 
 ### Synthetic Species Raster
 
-For the Medina demonstration there is no local vegetation-inventory layer, so we derive a two-class species raster from terrain: higher-slope pixels are recoded to "mixed wood" and lower-slope pixels to "open / shrub", then smoothed with a 7 × 7 modal filter to suppress salt-and-pepper artifacts. In the original BC workflow this slot was filled by the Vegetation Resource Inventory (VRI) `SPECIES_CD_1` attribute.
+For the Carr Fire demonstration there is no local vegetation-inventory layer, so we derive a two-class species raster from terrain: higher-slope pixels are recoded to "mixed conifer" and lower-slope pixels to "open / shrub", then smoothed with a 7 × 7 modal filter to suppress salt-and-pepper artifacts. In the original BC workflow this slot was filled by the Vegetation Resource Inventory (VRI) `SPECIES_CD_1` attribute.
 
 ```{r}
 #| eval: false
@@ -212,15 +212,15 @@ terra::plot(covs)
 
 ### Generate Synthetic Plots
 
-Draw 120 plot centroids uniformly across the AOI and sample the covariate stack at each point. The WSVHA response is built from a CHM-dominated linear expression with additive Gaussian noise, so the downstream modelling is demonstrable without proprietary field data.
+Draw 150 plot centroids uniformly across the Carr AOI and sample the covariate stack at each point. The WSVHA response is built from a CHM-dominated linear expression with additive Gaussian noise, so the downstream modelling is demonstrable without proprietary field data.
 
 ```{r}
 #| eval: false
-set.seed(20220708)
+set.seed(20230718)
 bb <- terra::ext(covs)
 pts <- data.frame(
-  x = runif(120, bb[1] + 5, bb[2] - 5),
-  y = runif(120, bb[3] + 5, bb[4] - 5)
+  x = runif(150, bb[1] + 5, bb[2] - 5),
+  y = runif(150, bb[3] + 5, bb[4] - 5)
 )
 plot_cov <- cbind(pts, terra::extract(covs, as.matrix(pts)))
 
@@ -296,7 +296,7 @@ cat("MAE:",  round(rf_mae,  2), "m^3/ha\n")
 cat("RMSE:", round(rf_rmse, 2), "m^3/ha\n")
 cat("R^2:",  round(rf_r2,   3), "\n")
 
-save(rf, file = "../data/wsvha_model_rf_medina.RData")
+save(rf, file = "../data/wsvha_model_rf_sierra.RData")
 ```
 
 **Preprocessing transformations** (available via `caret::train`):
@@ -344,7 +344,7 @@ terra::writeRaster(wsvha_raster,
                    overwrite = TRUE)
 
 terra::plot(wsvha_raster,
-            main = "Predicted WSVHA, Medina AOI",
+            main = "Predicted WSVHA, Carr AOI",
             col  = rev(terrain.colors(50)))
 
 hist(values(wsvha_raster), breaks = 40,
@@ -376,7 +376,7 @@ cat("Test-set RMSE:",   round(rf_rmse_test, 2), "m^3/ha\n")
 
 ### Operational Results (BC reference)
 
-For operational context, the table below reports the author's original performance figures from the [EFI model assessment pipeline](https://github.com/seamusrobertmurphy/enhanced-forest-inventory-model-assessment) on 5,264 BC FAIB permanent sample plots, 80/20 train-test + 10-fold CV. These numbers are reproduced here as a reference; the Medina simulation above uses a much smaller synthetic sample and should not be compared directly.
+For operational context, the table below reports the author's original performance figures from the [EFI model assessment pipeline](https://github.com/seamusrobertmurphy/enhanced-forest-inventory-model-assessment) on 5,264 BC FAIB permanent sample plots, 80/20 train-test + 10-fold CV. These numbers are reproduced here as a reference; the Carr simulation above uses a much smaller synthetic sample and should not be compared directly.
 
 | Model | Full RMSE | CV RMSE | Full MAE | RMSE Ratio |
 |:------|----------:|--------:|---------:|-----------:|
@@ -391,6 +391,8 @@ For operational context, the table below reports the author's original performan
 : Model comparison for WSVHA prediction (m³/ha), BC FAIB reference run. {#tbl-model-comparison}
 
 The RF (caret, 500 trees) achieves the lowest full-data RMSE but an RMSE ratio of 0.02, a clear sign of overfitting. The SVM Radial with tuned epsilon strikes the best balance: full RMSE of 5.9 m³/ha and CV RMSE of 9.9 m³/ha. Linear models (SVM Linear, GLM) failed entirely, with CV RMSE exceeding 200 m³/ha.
+
+For the Carr 1 ha demonstration the 300-tree RF on 150 simulated plots gives test-set RMSE near 110 m³/ha and R² near 0.91 — inflated because the plot response is synthesised from the covariates themselves. Treat this as a pipeline smoke-test, not a performance benchmark.
 
 ### Univariate Predictor Analysis (BC reference)
 
