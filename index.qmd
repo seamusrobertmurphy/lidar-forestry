@@ -9,6 +9,7 @@ format:
     highlight-style: pygments
     page-layout: article
 ---
+
 # Preface {.unnumbered}
 
 ------------------------------------------------------------------------
@@ -92,7 +93,7 @@ Airborne LiDAR is becoming a standard tool for forest inventory operations, yet 
 
 This mini-book documents a complete operational workflow for processing airborne LiDAR data for forest inventory applications. It is structured as a sequential pipeline where each chapter builds directly on outputs from the previous stage. The workflow reflects real-world forestry LiDAR projects where computational efficiency, processing time, and validation against field measurements are critical considerations.
 
-The working example is a 1 ha clip from USGS 3DEP tile **10SGH1587** (Quality Level 1, ~78 pts/m², UTM 10N / NAVD88 Geoid18) over the Carr / Hirz / Delta Fires burn scar in Shasta County, California. The full tile is distributed through the [USGS Staged Elevation FTP directory](https://rockyweb.usgs.gov/vdelivery/Datasets/Staged/Elevation/LPC/Projects/CA_CarrHirzDeltaFires_2019_B19/CA_CarrHirzDeltaFires_2_2019/); the data validation report accompanies the download. A single 100 m × 100 m clip, centred on the tile's tallest-canopy cell, carries every chunk below one million points and drives all four chapters end-to-end.
+The working example is a 1 ha clip from the point cloud tile `10SGH1587` flown over the Carr Hirz Delta Fires burn site in Shasta County, California. The full catalog is distributed through the [USGS Staged Elevation FTP directory](#0); along with the data validation reports and metadata.
 
 The workflow uses R with `lidR` [@roussel2019lidr; @roussel2020] and `ForestTools` [@ForestTools]. Code examples are designed for operational use: large datasets, tile processing, and edge effects. Spatial operations lean on `sf` [@pebesma2021package; @pebesma2018simple; @pebesma2023spatial] and `terra` [@hijmans2023terra]. All dependencies are declared in the environment-setup chunk below.
 
