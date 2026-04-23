@@ -48,6 +48,9 @@ tmap_options(max.raster = c(plot = 9500000, view = 10000000))
 ```{r}
 #| echo: false
 #| results: asis
+#| comment: NA
+#| warning: false
+#| error: false
 
 # Create icon links for author section
 fa_orcid <- fontawesome::fa("orcid", fill = "#A6CE39")
