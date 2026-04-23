@@ -2,30 +2,32 @@
 title: "Point Clouds"
 subtitle: "Data Preprocessing and DTM Generation"
 date: 2021-12-05
-author: 
+author:
   - name: Seamus Murphy
-    orcid: 0000-0002-1792-0351 
+    orcid: 0000-0002-1792-0351
     email: seamusrobertmurphy@gmail.com
-format: 
+format:
   html:
     toc: true
     toc-location: right
     toc-title: "**Contents**"
     number-sections: false
-    theme: 
+    theme:
       - ../styles.scss
       - default
     embed-resources: false
-    
+
 engine: knitr
 bibliography: ../references/references.bib
 csl: ../references/apa.csl
-citeproc: true  
+citeproc: true
 ---
 
 ## 1.0 Overview
 
 Raw LiDAR data arrives as massive unclassified point clouds (.xyz, .laz format) containing ground, vegetation, buildings, and noise. This chapter documents the preprocessing pipeline: catalog management, ground classification, noise removal, DTM generation, and height normalization. Output is analysis-ready normalized point clouds for tree detection.
+
+The working example in this and subsequent chapters uses a public-domain UAS survey of an erosion-prone area north of Medina River Natural Area, San Antonio, TX, acquired 2022-07-08 by the USGS Oklahoma-Texas Water Science Center and released under a US Government public-domain mark ([DOI:10.5066/P9KN8RG0](https://doi.org/10.5066/P9KN8RG0)). The source tile is ~80 ha at ~206 pts/m² in NAD83(2011) / UTM 14N with NAVD88 heights; figures are built from a central 1 ha clip.
 
 **Note**: Ground classification and DTM generation on large catalogs can require full-day processing times. Tiling configuration and indexing quality directly impact performance.
 
@@ -37,12 +39,12 @@ Raw LiDAR data arrives as massive unclassified point clouds (.xyz, .laz format) 
 #| error: false
 #| echo: true
 pacman::p_load(
-  "curl", 
+  "curl",
   "dplyr",
   "fontawesome",
   "htmltools",
   "kableExtra", "knitr",
-  "lidR", 
+  "lidR",
   "raster", "reproj",
   "sf",
   "terra", "tmap",
@@ -56,10 +58,10 @@ pacman::p_load(
 #| echo: false
 
 knitr::opts_chunk$set(
-  echo = TRUE, 
-  message = FALSE, 
+  echo = TRUE,
+  message = FALSE,
   warning = FALSE,
-  error = TRUE, 
+  error = TRUE,
   comment = NA)
 
 sf::sf_use_s2(use_s2 = FALSE)
@@ -79,7 +81,7 @@ div.column {
   display: block;
   height:200px;
   width: 200px;
-  background-image: url('https://raw.githubusercontent.com/seamusrobertmurphy/lidar-forestry/refs/heads/main/assets/PNG/las_tile_ahbau_norm.png');
+  background-image: url('https://raw.githubusercontent.com/seamusrobertmurphy/lidar-forestry/refs/heads/feature/04-22/assets/PNG/las_tile_medina_norm.png');
   background-size: contain;
   background-position: 50% 50%;
   padding-top: 80px !important;
@@ -91,7 +93,7 @@ div.column {
 
 ## 1.1 Catalog Management
 
-`LAScatalog` handles datasets too large for memory by partitioning data into chunks and processing sequentially or in parallel. Does not support overlapping tiles—filter overlaps using `withheld` attribute or `-drop_class 19`.
+`LAScatalog` handles datasets too large for memory by partitioning data into chunks and processing sequentially or in parallel. For the Medina tile we read the single LAZ and clip a 1 ha AOI near its centre.
 
 ```{r import-catalog}
 #| warning: false
@@ -100,38 +102,35 @@ div.column {
 #| echo: true
 #| eval: false
 
-# Read and validate LAS files, then assemble them into a LAScatalog object.
-las_ctg_ahbau = readALSLAScatalog("./Data/Ahbau/Las_v12_ASPRS/", select = "xyzcr")
-# A custom R function was used to handle .7z archives.
-un7zip = function(archive, where) {
-  archive <- normalizePath(archive)
-  current_path <- setwd(where)
-  system(paste("7zr x", archive, sep = " "))
-  setwd(current_path)
-}
-un7zip(zip_file_ahbau_sub, zip_dir_ahbau_top)
-# Read and validate LAS files, then assemble them into a LAScatalog object.
-las_ctg_ahbau_indexed = readALSLAScatalog("./Data/Ahbau/Las_v12_ASPRS/")
-opt_select(las_ctg_ahbau_indexed) = "xyzcr"
-# Apply the '-drop_class 19' filter to remove overlapping points.
-opt_filter(las_ctg_ahbau_indexed) = '-drop_class 19'
-# Set chunking options for memory efficiency.
-opt_chunk_size(las_ctg_ahbau_indexed) = 1000
-opt_chunk_buffer(las_ctg_ahbau_indexed) = 10
-filter_duplicates(las_ctg_ahbau_indexed)
-is.indexed(las_ctg_ahbau_indexed)
-las_check(las_ctg_ahbau_indexed)
-plot(las_ctg_ahbau_indexed, chunk = TRUE)
+# Read catalog from a single LAZ file.
+las_ctg_medina <- readLAScatalog(
+  "../assets/data/MNA_pointcloud_20220708.laz",
+  select = "xyzrn"
+)
+opt_chunk_size(las_ctg_medina)   <- 500
+opt_chunk_buffer(las_ctg_medina) <- 10
+is.indexed(las_ctg_medina)
+las_check(las_ctg_medina)
+plot(las_ctg_medina, chunk = TRUE)
+
+# Centre-AOI clip used throughout the remaining chapters (1 ha).
+bb   <- sf::st_bbox(las_ctg_medina)
+cx   <- mean(c(bb["xmin"], bb["xmax"]))
+cy   <- mean(c(bb["ymin"], bb["ymax"]))
+las_raw <- clip_rectangle(
+  las_ctg_medina,
+  cx - 50, cy - 50, cx + 50, cy + 50
+)
 ```
 
 **Key parameters**:
 
 -   Buffer = 10m minimizes edge effects
--   Chunk size = 1000m balances memory vs. overhead
--   Filter overlaps before processing to prevent artifacts
+-   Chunk size = 500m works for the compact Medina tile (758 × 1053 m)
+-   For multi-tile catalogs, use `opt_filter('-drop_class 19')` to remove overlapping points and `filter_duplicates()`
 
 ::: {style="overflow: auto;"}
-![Check Check 1](../assets/PNG/unnamed-chunk-4-1.png){alt="Check Check 1" style="float: left; margin-right: 2%;" width="43.5%"} ![Chunk Check 2](https://raw.githubusercontent.com/seamusrobertmurphy/lidR-point-cloud-processing/refs/heads/main/13_lidR_PointCloud_Processing_files/markdown_pngs/las_ctg_ahbau_dtm_processing.png){alt="Chunk Check 2" style="float: left;" width="50.2%"}
+![Raw Z histogram](../assets/PNG/unnamed-chunk-4-1.png){alt="Raw Z histogram" style="float: left; margin-right: 2%;" width="43.5%"} ![DTM processing](../assets/PNG/las_ctg_medina_dtm_processing.png){alt="DTM processing" style="float: left;" width="50.2%"}
 :::
 
 ![](../assets/PNG/tas_ctg_check.png){fig-align="center" width="95%"}
@@ -140,7 +139,7 @@ plot(las_ctg_ahbau_indexed, chunk = TRUE)
 
 ## 1.2 Ground Classification
 
-In this section, we compare performances of the Cloth Simulation Filter (`csf()`) with the Progressive Morphological Filter (`pmf()`). As shown below, we found the `csf()` algorithm produced much a smoother DTM product. In our review of the literature, we found similar discrepancies recorded between these algorithms. The package's developers have since responded confirming there to be a flaw in function's mathematical logic that is exposed when comparing performances in point-cloud operations. This become especially evident across variable topography where the `csf()` excels [@zhang2016]. As a result, the `csf()` candidate was selected and its output was passed downstream for next steps.
+In this section, we compare performances of the Cloth Simulation Filter (`csf()`) with the Progressive Morphological Filter (`pmf()`). The `csf()` algorithm tends to produce a smoother DTM, particularly across variable topography [@zhang2016]. For the Medina tile — which has ~56 m of relief over 100 m of AOI — the CSF output is visibly cleaner and is carried downstream.
 
 ```{r}
 #| warning: false
@@ -149,37 +148,36 @@ In this section, we compare performances of the Cloth Simulation Filter (`csf()`
 #| echo: true
 #| eval: false
 
-# Apply CSF
 library(RCSF)
-opt_output_files(
-	las_ctg_ahbau_indexed) = paste0(
-		tempdir(), "./Data/las_ctg_ahbau_csf")
-las_ctg_ahbau_csf = classify_ground(las_ctg_ahbau_indexed, csf(sloop_smooth=TRUE, 0.5, 1))
 
-# Apply PMF
-util_makeZhangParam()
-las_ctg_ahbau_pmf = classify_ground(
-	las_ctg_ahbau_indexed, pmf(seq(5, 9, 13), seq(3, 3, 3)))
+# Apply CSF
+las_csf <- classify_ground(las_raw, csf(sloop_smooth = TRUE, 0.5, 1))
+
+# Apply PMF for comparison
+las_pmf <- classify_ground(
+  las_raw,
+  pmf(ws = c(3, 6, 9), th = c(0.5, 1, 1.5))
+)
 ```
 
-```         
-## Metrics computation: [=-------------------------------------------------] 3% (1 threads)Metrics computation: [==------------------------------------------------] 4% (1 threads)Metrics computation: [==------------------------------------------------] 5% (1 threads)Metrics computation: ===-----------------------------------------------] 6% (1 threads)Metrics computation: [===-----------------------------------------------] 7% (1 threads)Metrics computation: [====----------------------------------------------] 8% (1 threads)Metrics computation: [====----------------------------------------------] 9% (1 threads)Metrics computation: [=====---------------------------------------------] 10% (1 threads)Metrics computation: [=====---------------------------------------------] 11% (1 threads)Metrics computation: [======--------------------------------------------] 12% (1 threads)Metrics computation: [======--------------------------------------------] 13% (1 threads)Metrics computation: [=======-------------------------------------------] 14% (1 threads)Metrics computation: [=======-------------------------------------------] 15% (1 threads)Metrics computation: [========------------------------------------------] 16% (1 threads)Metrics computation: [========------------------------------------------] 17% (1 threads)Metrics computation: [=========-----------------------------------------] 18% (1 threads)Metrics computation: [=========-----------------------------------------] 19% (1 threads)Metrics computation: [==========----------------------------------------] 20% (1 threads)Metrics computation: [==========----------------------------------------] 21% (1 threads)Metrics computation: [===========---------------------------------------] 22% (1 threads)Metrics computation: [===========---------------------------------------] 23% (1 threads)Metrics computation: [============--------------------------------------] 24% (1 threads)Metrics computation: [============--------------------------------------] 25% (1 threads)Metrics computation: [=============-------------------------------------] 26% (1 threads)Metrics computation: [=============-------------------------------------] 27% (1 threads)Metrics computation: [==============------------------------------------] 28% (1 threads)Metrics computation: [==============------------------------------------] 29% (1 threads)Metrics computation: [===============-----------------------------------] 30% (1 threads)Metrics computation: [===============-----------------------------------] 31% (1 threads)Metrics computation: [================----------------------------------] 32% (1 threads)Metrics computation: [================----------------------------------] 33% (1 threads)Metrics computation: [=================---------------------------------] 34% (1 threads)Metrics computation: [=================---------------------------------] 35% (1 threads)Metrics computation: [==================--------------------------------] 36% (1 threads)Metrics computation: [==================--------------------------------] 37% (1 threads)Metrics computation: [===================-------------------------------] 38% (1 threads)Metrics computation: [===================-------------------------------] 39% (1 threads)Metrics computation: [====================------------------------------] 40% (1 threads)Metrics computation: [====================------------------------------] 41% (1 threads)Metrics computation: [=====================-----------------------------] 42% (1 threads)Metrics computation: [=====================-----------------------------] 43% (1 threads)Metrics computation: [======================----------------------------] 44% (1 threads)Metrics computation: [======================----------------------------] 45% (1 threads)Metrics computation: [=======================---------------------------] 46% (1 threads)Metrics computation: [=======================---------------------------] 47% (1 threads)Metrics computation: [========================--------------------------] 48% (1 threads)Metrics computation: [========================--------------------------] 49% (1 threads)Metrics computation: [=========================-------------------------] 50% (1 threads)Metrics computation: [=========================-------------------------] 51% (1 threads)Metrics computation: [==========================------------------------] 52% (1 threads)Metrics computation: [==========================------------------------] 53% (1 threads)Metrics computation: [===========================-----------------------] 54% (1 threads)Metrics computation: [===========================-----------------------] 55% (1 threads)Metrics computation: [============================----------------------] 56% (1 threads)Metrics computation: [============================----------------------] 57% (1 threads)Metrics computation: [=============================---------------------] 58% (1 threads)Metrics computation: [=============================---------------------] 59% (1 threads)Metrics computation: [==============================--------------------] 60% (1 threads)Metrics computation: [==============================--------------------] 61% (1 threads)Metrics computation: [===============================-------------------] 62% (1 threads)Metrics computation: [===============================-------------------] 63% (1 threads)Metrics computation: [================================------------------] 64% (1 threads)Metrics computation: [================================------------------] 65% (1 threads)Metrics computation: [=================================-----------------] 66% (1 threads)Metrics computation: [=================================-----------------] 67% (1 threads)Metrics computation: [==================================----------------] 68% (1 threads)Metrics computation: [==================================----------------] 69% (1 threads)Metrics computation: [===================================---------------] 70% (1 threads)Metrics computation: [===================================---------------] 71% (1 threads)Metrics computation: [====================================--------------] 72% (1 threads)Metrics computation: [====================================--------------] 73% (1 threads)Metrics computation: [=====================================-------------] 74% (1 threads)Metrics computation: [=====================================-------------] 75% (1 threads)Metrics computation: [======================================------------] 76% (1 threads)Metrics computation: [======================================------------] 77% (1 threads)Metrics computation: [=======================================-----------] 78% (1 threads)Metrics computation: [=======================================-----------] 79% (1 threads)Metrics computation: [========================================----------] 80% (1 threads)Metrics computation: [========================================----------] 81% (1 threads)Metrics computation: [=========================================---------] 82% (1 threads)Metrics computation: [=========================================---------] 83% (1 threads)Metrics computation: [==========================================--------] 84% (1 threads)Metrics computation: [==========================================--------] 85% (1 threads)Metrics computation: [===========================================-------] 86% (1 threads)Metrics computation: [===========================================-------] 87% (1 threads)Metrics computation: [============================================------] 88% (1 threads)Metrics computation: [============================================------] 89% (1 threads)Metrics computation: [=============================================-----] 90% (1 threads)Metrics computation: [=============================================-----] 91% (1 threads)Metrics computation: [==============================================----] 92% (1 threads)Metrics computation: [==============================================----] 93% (1 threads)Metrics computation: [===============================================---] 94% (1 threads)Metrics computation: [===============================================---] 95% (1 threads)Metrics computation: [================================================--] 96% (1 threads)Metrics computation: [================================================--] 97% (1 threads)Metrics computation: [=================================================-] 98% (1 threads)Metrics computation: [=================================================-] 99% (1 threads)Metrics computation: [==================================================] 100% (1 threads)
-```
+::: {style="overflow: auto;"}
+![CSF ground](../assets/PNG/las_tile_medina_csf.png){alt="CSF ground" style="float: left; margin-right: 2%;" width="49%"} ![PMF ground](../assets/PNG/las_tile_medina_pmf.png){alt="PMF ground" style="float: left;" width="49%"}
+:::
 
 ------------------------------------------------------------------------
 
 ## 1.3 Noise Removal
 
-Once ground points are classified, any remaining noise, such as atmospheric interference or photon noise, is identified and removed to ensure data integrity. This process was carried out using the Statistical Outlier Removal (`sor`) algorithm, which was fitted with a default neighborhood sample of `k=10` and a multiplier of `m=3`.
+Once ground points are classified, any remaining noise is identified and removed to ensure data integrity. This process was carried out using the Statistical Outlier Removal (`sor`) algorithm with a default neighborhood sample of `k=10` and a multiplier of `m=3`.
 
-The workflow considered four potential methods for noise screening, including:
+The workflow considered four potential methods for noise screening:
 
 1.  Using internal algorithms with the `filter_poi` function and a `LASNOISE` string.
 2.  Filtering with `opt_filter` and the `-drop class 19` string.
 3.  Screening by a Z-axis threshold (e.g., `Z > 40 & Z < 0`).
 4.  Screening by the 95th percentile.
 
-The approach of using `filter_poi` with an internal algorithm was found to be slower in the long run due to a loss of spatial indexing after a new catalog object was assigned.
+Using `filter_poi` with an internal algorithm was found to be slower in the long run due to loss of spatial indexing after a new catalog object was assigned.
 
 ```{r}
 #| warning: false
@@ -188,27 +186,27 @@ The approach of using `filter_poi` with an internal algorithm was found to be sl
 #| echo: true
 #| eval: false
 
-opt_output_files(las_ctg_ahbau_csf) = paste0(tempdir(), "./Data/las_ctg_ahbau_csf_so")
-opt_select(las_ctg_ahbau_csf) = "xyzcr"
-opt_filter(las_ctg_ahbau_csf) = "-drop_class 19"
-las_ctg_ahbau_csf_so = classify_noise(las_ctg_ahbau_csf, sor(k=10, m=3))
-las_ctg_ahbau_csf_sor = filter_poi(las_ctg_ahbau_csf_so, Classification != LASNOISE)
+las_csf_so  <- classify_noise(las_csf, sor(k = 10, m = 3))
+las_csf_sor <- filter_poi(las_csf_so, Classification != LASNOISE)
+
+las_pmf_so  <- classify_noise(las_pmf, sor(k = 10, m = 3))
+las_pmf_sor <- filter_poi(las_pmf_so, Classification != LASNOISE)
 ```
 
 ::: {style="overflow: auto;"}
-![Noise Removal 1](../assets/PNG/las_tile_ahbau_csf_so.png){alt="Noise Removal 1" style="float: left; margin-right: 2%;" width="49%"} ![Noise Removal 2](../assets/PNG/las_tile_ahbau_pmf_so.png){alt="Noise Removal 2" style="float: left;" width="49%"}
+![Noise removal (CSF)](../assets/PNG/las_tile_medina_csf_so.png){alt="Noise removal CSF" style="float: left; margin-right: 2%;" width="49%"} ![Noise removal (PMF)](../assets/PNG/las_tile_medina_pmf_so.png){alt="Noise removal PMF" style="float: left;" width="49%"}
 :::
 
 ------------------------------------------------------------------------
 
 ## 1.4 Digital Terrain Model
 
-This section documents an important step of rasterization. This step is empirically paramount to terrain analysis as it involves assembling the DTM layer from the dataset of classified ground points which shapes all subsequent height-based estimates. The Inverse Distance Weighting (`knnidw`) algorithm was employed for this task due to its efficiency, robustness, and known sensitivity to lake anomalies [@tu2020]. The `knnidw` parameters were set to the
+Rasterization is empirically paramount to terrain analysis as it shapes all subsequent height-based estimates. The Inverse Distance Weighting (`knnidw`) algorithm was employed due to its efficiency, robustness, and known sensitivity to lake anomalies [@tu2020]. Parameters:
 
--   default maximum radius of 50m,
--   a neighborhood of `10`,
--   an inverse distance weighting power of `2`,
--   and a resolution of `1m`.
+-   Default maximum radius of 50 m
+-   Neighborhood of `10`
+-   Inverse distance weighting power of `2`
+-   Resolution of `0.5 m` (matches the dense UAS point spacing)
 
 ```{r}
 #| warning: false
@@ -217,25 +215,23 @@ This section documents an important step of rasterization. This step is empirica
 #| echo: true
 #| eval: false
 
-# Single tile for validation
-las_dtm = grid_terrain(las_final, res=1, knnidw(k=10, p=2, rmax=50))
-
-# Full catalog
-opt_output_files(las_final) = paste0(tempdir(), "/dtm")
-las_ctg_dtm = grid_terrain(las_final, res=1, knnidw())
+dtm_csf <- rasterize_terrain(las_csf_sor, res = 0.5,
+                             knnidw(k = 10, p = 2, rmax = 50))
+dtm_pmf <- rasterize_terrain(las_pmf_sor, res = 0.5,
+                             knnidw(k = 10, p = 2, rmax = 50))
 
 # Hillshade visualization
-slope = terrain(las_dtm, "slope", unit="radians")
-aspect = terrain(las_dtm, "aspect", unit="radians")
-hillshade = hillShade(slope, aspect, angle=40, direction=270)
-plot(hillshade, col=grey(0:100/100), legend=FALSE)
+slope   <- terra::terrain(dtm_csf, "slope",  unit = "radians")
+aspect  <- terra::terrain(dtm_csf, "aspect", unit = "radians")
+hs      <- terra::shade(slope, aspect, angle = 40, direction = 270)
+terra::plot(hs, col = grey(0:100/100), legend = FALSE)
 ```
 
 ::: {style="overflow: auto;"}
-![DTM-1](../assets/PNG/las_tile_ahbau_csf_sor_dtm.png){alt="DTM-1" style="float: left; margin-right: 2%;" width="49%"} ![DTM-2](../assets/PNG/las_tile_ahbau_pmf_sor_dtm.png){alt="DTM-2" style="float: left;" width="47.7%"}
+![DTM (CSF + SOR)](../assets/PNG/las_tile_medina_csf_sor_dtm.png){alt="DTM CSF" style="float: left; margin-right: 2%;" width="49%"} ![DTM (PMF + SOR)](../assets/PNG/las_tile_medina_pmf_sor_dtm.png){alt="DTM PMF" style="float: left;" width="47.7%"}
 :::
 
-**Result**: CSF produces visually superior DTM.
+**Result**: CSF produces a visibly smoother DTM across the Medina relief gradient.
 
 ------------------------------------------------------------------------
 
@@ -246,18 +242,19 @@ Transform Z values from absolute elevation to height above ground. Essential inp
 ```{r normalize-height}
 #| eval: false
 
-opt_filter(las_final) = '-keep_first'
-las_norm = normalize_height(las_final, knnidw())
+las_norm <- normalize_height(las_csf_sor, knnidw())
 
 # Validate normalization
-hist(filter_ground(las_norm)$Z, 
-     breaks=seq(-0.6, 0.6, 0.01), 
-     main="Ground Point Heights", 
-     xlab="Elevation (m)")
+hist(filter_ground(las_norm)$Z,
+     breaks = seq(-0.6, 0.6, 0.01),
+     main = "Ground Point Heights",
+     xlab = "Elevation (m)")
+
+lidR::writeLAS(las_norm, "../data/las_1ha.laz")
 ```
 
 ::: {style="overflow: auto;"}
-![Normalized point cloud](../assets/PNG/las_tile_ahbau_norm.png){style="float: left; margin-right: 2%;" width="49%"} ![Ground height distribution](../assets/PNG/las_tile_ahbau_norm_histogram.png){alt="DTM-2" style="float: left;" width="43.5%"}
+![Normalized point cloud](../assets/PNG/las_tile_medina_norm.png){style="float: left; margin-right: 2%;" width="49%"} ![Ground height distribution](../assets/PNG/las_tile_medina_norm_histogram.png){alt="Ground height distribution" style="float: left;" width="43.5%"}
 :::
 
 **Validation**: Ground point histogram should center near zero. Deviations indicate DTM issues or algorithm failure in complex terrain.
@@ -266,7 +263,7 @@ hist(filter_ground(las_norm)$Z,
 
 ### Runtime Notes
 
--   311 tiles processed in \~24 hours (high-performance system).
+-   311 tiles processed in \~24 hours (high-performance system) for the original BC demonstration; the Medina 1 ha AOI completes in under two minutes on a laptop.
 -   Bottlenecks: ground classification (60%), DTM interpolation (30%), I/O overhead (10%).
 -   Process chunks sequentially if RAM \< 32GB
 -   Increase chunk buffer if edge artifacts visible

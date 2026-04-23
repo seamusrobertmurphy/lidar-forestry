@@ -1,21 +1,21 @@
 ---
 title: "Canopy Height"
 date: 2022-02-24
-author: 
+author:
   - name: Seamus Murphy
-    orcid: 0000-0002-1792-0351 
+    orcid: 0000-0002-1792-0351
     email: seamusrobertmurphy@gmail.com
-format: 
+format:
   html:
     toc: true
     toc-location: right
     toc-title: "**Contents**"
     number-sections: false
-    theme: 
+    theme:
       - default
       - ../styles.scss
     embed-resources: false
-    
+
 engine: knitr
 bibliography: ../references/references.bib
 csl: ../references/apa.csl
@@ -24,7 +24,7 @@ citeproc: true
 
 ## 3.0 Overview
 
-Canopy Height Models (CHM) represent vertical distance from ground to canopy top across the landscape. CHMs derived from normalized LiDAR point clouds serve as primary inputs for tree detection, biomass estimation, and forest inventory. This chapter documents operational workflows for CHM aggregation, mosaicking across multiple operating areas, and quality control procedures
+Canopy Height Models (CHM) represent vertical distance from ground to canopy top across the landscape. CHMs derived from normalized LiDAR point clouds serve as primary inputs for tree detection, biomass estimation, and forest inventory. This chapter documents operational workflows for CHM aggregation, dominant-height extraction, and quality control procedures using the Medina River 1 ha AOI normalized in Chapter 1.
 
 ------------------------------------------------------------------------
 
@@ -36,13 +36,13 @@ Canopy Height Models (CHM) represent vertical distance from ground to canopy top
 #| error: false
 #| echo: true
 pacman::p_load(
-  "curl", 
+  "curl",
   "dplyr",
-	"fontawesome",
+  "fontawesome",
   "htmltools", "httr2",
   "janitor",
   "kableExtra", "knitr",
-  "lidR", "lutz", 
+  "lidR", "lutz",
   "openxlsx",
   "PROJ",
   "raster", "rasterVis", "reproj",
@@ -58,25 +58,23 @@ pacman::p_load(
 #| error: false
 #| echo: false
 knitr::opts_chunk$set(
-  echo = TRUE, 
-  message = FALSE, 
+  echo = TRUE,
+  message = FALSE,
   warning = FALSE,
-  error = TRUE, 
-  comment = NA, 
+  error = TRUE,
+  comment = NA,
   tidy.opts = list(
     width.cutoff = 60)
-  ) 
+  )
 
-#knit_hooks$set(webgl = hook_webgl)
-#knit_hooks$set(rgl.static = hook_rgl)
 sf::sf_use_s2(use_s2 = FALSE)
 
-options(htmltools.dir.version = FALSE, 
+options(htmltools.dir.version = FALSE,
         htmltools.preserve.raw = FALSE,
-				tinytex.verbose = TRUE
-				)
+        tinytex.verbose = TRUE
+        )
 
-tmap_options(max.raster = c(plot = 9500000, view = 10000000)) # allows large raster rendering
+tmap_options(max.raster = c(plot = 9500000, view = 10000000))
 ```
 
 ```{css, echo=FALSE, class.source = 'foldable'}
@@ -91,7 +89,7 @@ div.column {
   display: block;
   height:200px;
   width: 200px;
-  background-image: url('https://raw.githubusercontent.com/seamusrobertmurphy/lidar-forestry/refs/heads/main/assets/PNG/stem_detect_G.png');
+  background-image: url('https://raw.githubusercontent.com/seamusrobertmurphy/lidar-forestry/refs/heads/feature/04-22/assets/PNG/stem_detect_G.png');
   background-size: contain;
   background-position: 50% 50%;
   padding-top: 80px !important;
@@ -103,7 +101,7 @@ div.column {
 
 ## 3.1 Prepare CHM
 
-Create 1m resolution CHM from normalized point clouds using triangulation.
+Create 1 m resolution CHM from the normalized point cloud using triangulation.
 
 ```{r}
 #| warning: false
@@ -112,12 +110,12 @@ Create 1m resolution CHM from normalized point clouds using triangulation.
 #| echo: true
 #| eval: true
 # Import outputs from previous chapter
-las = lidR::readALSLAS("../data/las_1ha.laz")
-ttops		   = sf::read_sf("../data/ttops_1ha.gpkg", quiet = TRUE)
+las   <- lidR::readALSLAS("../data/las_1ha.laz")
+ttops <- sf::read_sf("../data/ttops_1ha.gpkg", quiet = TRUE)
 
-# Generate 1m CHM
-chm = lidR::grid_canopy(las, res = 1, dsmtin(max_edge = 8))
-plot(chm, col = height.colors(50))
+# Generate 1 m CHM
+chm <- lidR::rasterize_canopy(las, res = 1, dsmtin(max_edge = 8))
+terra::plot(chm, col = height.colors(50))
 ```
 
 ------------------------------------------------------------------------
@@ -126,39 +124,38 @@ plot(chm, col = height.colors(50))
 
 ### Points Extraction
 
-Extract dominant height directly from point clouds without rasterizing. This method is slower but preserves full point information. Note that we are using `ttops` object derived previously in [Chapter 2: Stem Detection](https://seamusrobertmurphy.quarto.pub/lidar-forestry/stem-detect/).
+Extract dominant height directly from point clouds without rasterizing. This method is slower but preserves full point information. The `ttops` object is derived in [Chapter 2: Stem Detection](https://seamusrobertmurphy.quarto.pub/lidar-forestry/stem-detect/).
 
 ```{r}
 #| eval: true
-# Create a 1m grid
-grid    	 = sf::st_make_grid(ttops, cellsize = 1, square = TRUE)
-grid_sf    = sf::st_sf(grid_id = 1:length(grid), geometry = grid)
-ttops_grid = sf::st_join(ttops, grid_sf)
+# Create a 1 m grid
+grid       <- sf::st_make_grid(ttops, cellsize = 1, square = TRUE)
+grid_sf    <- sf::st_sf(grid_id = 1:length(grid), geometry = grid)
+ttops_grid <- sf::st_join(ttops, grid_sf)
 
-ttops_95h  = ttops_grid |> 
-	sf::st_drop_geometry() |> 
-	dplyr::group_by(grid_id) |>
-  summarise(
-    count = n(),
-    `95thQuantile` = quantile(Z, 0.95, na.rm = TRUE),
-    Max = max(Z, na.rm = TRUE),
-    .groups = 'drop'
-  ) |>
-  right_join(grid_sf, by = "grid_id") %>%
-  sf::st_as_sf()
+ttops_95h <- ttops_grid |>
+    sf::st_drop_geometry() |>
+    dplyr::group_by(grid_id) |>
+    dplyr::summarise(
+      count = dplyr::n(),
+      `95thQuantile` = quantile(Z, 0.95, na.rm = TRUE),
+      Max = max(Z, na.rm = TRUE),
+      .groups = "drop"
+    ) |>
+    dplyr::right_join(grid_sf, by = "grid_id") |>
+    sf::st_as_sf()
 
-# Convert to raster if needed
-ttops_95h_rast <- rasterize(
-  vect(ttops_95h), 
-  rast(ext(ttops_95h), res = 1, crs = crs(ttops_95h)),
+# Convert to raster
+ttops_95h_rast <- terra::rasterize(
+  terra::vect(ttops_95h),
+  terra::rast(terra::ext(ttops_95h), res = 1, crs = terra::crs(ttops_95h)),
   field = "95thQuantile"
 )
 
-# Plot
-plot(ttops_95h_rast, main = "95th Percentile Height")
+terra::plot(ttops_95h_rast, main = "95th Percentile Height")
 ```
 
-![](/assets/PNG/stem_detect_G.png)
+![](../assets/PNG/stem_detect_G.png)
 
 ------------------------------------------------------------------------
 
@@ -174,15 +171,15 @@ quant95 <- function(x, ...) {
     quantile(x, probs = 0.95, na.rm = TRUE)
 }
 
-# Aggregate using q95
+# Aggregate using q95 (2x means a 2 m output cell from 1 m input)
 chm_95h <- terra::aggregate(
     chm,
-    fact = 1,
+    fact = 2,
     fun = quant95
 )
 
-plot(chm_95h, main = "95th Percentile Height")
-writeRaster(chm_95h,"../data/chm_95h.tif",overwrite=T)
+terra::plot(chm_95h, main = "95th Percentile Height")
+terra::writeRaster(chm_95h, "../data/chm_95h.tif", overwrite = TRUE)
 ```
 
 ------------------------------------------------------------------------
@@ -194,38 +191,32 @@ Compare 95th percentile CHM against detected tree heights from Chapter 2.
 ```{r}
 #| eval: true
 # Extract CHM values at tree locations
-ttops$chm_95h <- terra::extract(rast(chm_95h), vect(ttops))[, 2]
+ttops$chm_95h <- terra::extract(terra::rast(chm_95h), terra::vect(ttops))[, 2]
 
 # Statistics
-validation <- ttops %>%
-    summarise(
+validation <- ttops |>
+    dplyr::summarise(
         correlation = cor(Z, chm_95h, use = "complete.obs"),
         rmse = sqrt(mean((Z - chm_95h)^2, na.rm = TRUE)),
         mae = mean(abs(Z - chm_95h), na.rm = TRUE),
         bias = mean(Z - chm_95h, na.rm = TRUE)
     )
 
-print(validation) # review and revise
+print(validation)
 ```
 
 ------------------------------------------------------------------------
 
 ## 3.4 Build Mosaic
 
-Merge all operating areas into single product for Chapter 4
+Merge all operating areas into single product for Chapter 4. For the Medina demonstration the AOI is a single tile, so the 95th-percentile raster from §3.2 is the input to the biomass model in Chapter 4.
 
 ```{r}
 #| eval: false
-# List contents
-area_chms <- lapply(areas, function(a) {
-    raster(sprintf("../data/chm-tiles/", a))
-})
-
-# Merge contents
-chm_95h_final <- do.call(merge, c(area_chms, tolerance = 1))
-
-# Save output
-writeRaster(chm_95h_final,"../data/chm_95h.tif",overwrite=T)
+# With multi-area datasets the mosaic step loops over per-area CHM rasters.
+# area_chms <- lapply(areas, function(a) raster(sprintf("../data/chm-tiles/%s.tif", a)))
+# chm_95h_final <- do.call(merge, c(area_chms, tolerance = 1))
+# writeRaster(chm_95h_final, "../data/chm_95h.tif", overwrite = TRUE)
 ```
 
 This raster is the dominant height input for biomass models in Chapter 4.

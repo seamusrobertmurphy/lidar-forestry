@@ -1,21 +1,21 @@
 ---
 title: "Biomass Estimation"
 date: 2022-02-24
-author: 
+author:
   - name: Seamus Murphy
-    orcid: 0000-0002-1792-0351 
+    orcid: 0000-0002-1792-0351
     email: seamusrobertmurphy@gmail.com
-format: 
+format:
   html:
     toc: true
     toc-location: right
     toc-title: "**Contents**"
     number-sections: false
-    theme: 
+    theme:
       - default
       - ../styles.scss
     embed-resources: false
-    
+
 engine: knitr
 bibliography: ../references/references.bib
 csl: ../references/apa.csl
@@ -26,7 +26,9 @@ citeproc: true
 
 ## 4.0 Overview
 
-LiDAR-derived metrics enable wall-to-wall biomass and volume predictions when calibrated with field inventory data. This chapter demonstrates the complete workflow: covariate preparation, species classification, masking, model training, and spatial prediction for whole stem volume per hectare (WSVHA) estimates
+LiDAR-derived metrics enable wall-to-wall biomass and volume predictions when calibrated with field inventory data. This chapter demonstrates the complete workflow applied to the Medina River UAS tile from Chapter 1: covariate preparation, a simulated plot dataset, model training with cross-validation, and spatial prediction of whole-stem volume per hectare (WSVHA, m³/ha).
+
+The plot data below are **simulated** over the Medina AOI — the USGS UAS release is copyright-clear, but there are no accompanying field inventory plots at that site. The response surface is drawn from LiDAR-derived CHM + terrain + a synthetic species raster with additive Gaussian noise; this preserves the structure of the real workflow (plot → model → raster) without depending on proprietary BC FAIB/VRI layers.
 
 ### Environment Setup
 
@@ -36,19 +38,20 @@ LiDAR-derived metrics enable wall-to-wall biomass and volume predictions when ca
 #| error: false
 #| echo: true
 pacman::p_load(
-  "caret", "curl", 
-  "dplyr", 
+  "caret", "curl",
+  "dplyr",
   "fontawesome",
   "htmltools", "httr2",
   "janitor",
   "kableExtra", "knitr",
-  "leaflet", "lidR", "lutz", 
+  "leaflet", "lidR", "lutz",
+  "MASS",
   "openxlsx",
   "PROJ",
   "randomForest", "raster", "rasterVis", "reproj",
   "sf",
   "tinytex", "tmap", "tmaptools", "terra",
-  "useful", "usethis", 
+  "useful", "usethis",
   "webshot", "webshot2", "weathercan")
 ```
 
@@ -59,25 +62,23 @@ pacman::p_load(
 #| echo: false
 
 knitr::opts_chunk$set(
-  echo = TRUE, 
-  message = FALSE, 
+  echo = TRUE,
+  message = FALSE,
   warning = FALSE,
-  error = TRUE, 
-  comment = NA, 
+  error = TRUE,
+  comment = NA,
   tidy.opts = list(
     width.cutoff = 60)
-  ) 
+  )
 
-#knit_hooks$set(webgl = hook_webgl)
-#knit_hooks$set(rgl.static = hook_rgl)
 sf::sf_use_s2(use_s2 = FALSE)
 
-options(htmltools.dir.version = FALSE, 
+options(htmltools.dir.version = FALSE,
         htmltools.preserve.raw = FALSE,
-				tinytex.verbose = TRUE
-				)
+        tinytex.verbose = TRUE
+        )
 
-tmap_options(max.raster = c(plot = 9500000, view = 10000000)) # allows large raster rendering
+tmap_options(max.raster = c(plot = 9500000, view = 10000000))
 ```
 
 ```{css, echo=FALSE, class.source = 'foldable'}
@@ -92,7 +93,7 @@ div.column {
   display: block;
   height:200px;
   width: 200px;
-  background-image: url('https://raw.githubusercontent.com/seamusrobertmurphy/lidar-forestry/refs/heads/main/assets/PNG/stem_detect_C.png');
+  background-image: url('https://raw.githubusercontent.com/seamusrobertmurphy/lidar-forestry/refs/heads/feature/04-22/assets/PNG/stem_detect_C.png');
   background-size: contain;
   background-position: 50% 50%;
   padding-top: 1px !important;
@@ -108,226 +109,74 @@ div.column {
 
 ```{r}
 #| eval: false
-# Import & extract
-las = lidR::readALSLAS("../data/las_ha.laz")
-dtm = lidR::rasterize_terrain(las_sor, res = 1, algorithm = tin())
-lidR::plot_dtm3d(dtm, bg = "white") 
+las <- lidR::readALSLAS("../data/las_1ha.laz")
+dtm <- lidR::rasterize_terrain(las, res = 0.5, algorithm = tin())
+lidR::plot_dtm3d(dtm, bg = "white")
 
-# Save outputs
-
-terra::writeRaster(dtm, "./data/dtm_1m.tif")
+terra::writeRaster(dtm, "../data/dtm_1m.tif", overwrite = TRUE)
 ```
-
-![](/assets/PNG/biomass-model-B.png){fig-align="center" width="95%"}
 
 ### Terrain Covariates
 
-Derive slope and aspect from elevation raster. Transform aspect to northness (cosine) and eastness (sine) to avoid circular variable issues.
+Derive slope and aspect from the DTM. Transform aspect to northness (cosine) and eastness (sine) to avoid circular-variable issues.
 
 ```{r}
 #| eval: false
-elev = terra::rast("./data/dtm_10m.tif")
-elev = terra::project(elev, "EPSG:3857")
+elev <- terra::rast("../data/dtm_1m.tif")
 
-# Derive slope and aspect
-slope     = terra::terrain(elev, v = "slope", unit = "degrees", neighbors = 8)
-slope_pct = base::tan(slope * pi/180) * 100 
-slope_pct = terra::clamp(slope_pct, lower=0, upper=100)
+slope     <- terra::terrain(elev, v = "slope", unit = "degrees", neighbors = 8)
+slope_pct <- terra::clamp(base::tan(slope * pi/180) * 100, 0, 100)
 
-aspect <- terrain(elev, v = "aspect", unit = "degrees", neighbors = 8)
+aspect  <- terra::terrain(elev, v = "aspect", unit = "degrees", neighbors = 8)
+asp_cos <- cos((aspect * pi) / 180)   # Northness
+asp_sin <- sin((aspect * pi) / 180)   # Eastness
 
-# Transform aspect to linear components
-asp_cos <- cos((aspect * pi) / 180)  # Northness
-asp_sin <- sin((aspect * pi) / 180)  # Eastness
-
-# Aggregate & resample 
-# elev <- aggregate(elev, fact = 10, fun = mean)
-slope <- resample(slope_pct, elev, method = "bilinear")
-asp_cos <- resample(asp_cos, elev, method = "bilinear")
-asp_sin <- resample(asp_sin, elev, method = "bilinear")
-
-slope_matrix = matrix(c(
-  0, 5, 1,    # <5%
-  5, 10, 2,   # 5-10%
-  10, 15, 3,  # 10-15%
-  15, 20, 4,  # 15-20%
-  20, 30, 5,  # 20-30%
-  30, 100, 6  # 30-100% (since you clamped at 100)
-), ncol=3, byrow=TRUE)
-slope = terra::classify(
-	slope, slope_matrix, include.lowest=TRUE)
-
-# Visualize
-levels(slope) <- data.frame(ID = 1:6,
-  slope_class = c("<5%", "5-10%", "10-15%", "15-20%", "20-30%", "30-100%"))
-
-terra::writeRaster(elev, "./data/elev_1m.tif")
-terra::writeRaster(slope, "./data/slope_1m.tif")
-terra::writeRaster(asp_cos, "./data/northness_1m.tif")
-terra::writeRaster(asp_sin, "./data/eastness_1m.tif")
-
-tmap::tmap_mode("plot")
-tmap::tm_shape(elev) + 
-  tmap::tm_raster(
-    col.scale = tm_scale_continuous(values = terrain.colors(7)),
-    col.legend = tm_legend(title = "Elevation (m)", reverse = T)) + 
-  tmap::tm_graticules(lines = T, labels.rot = c(0, 90), lwd = 0.2) +
-  tmap::tm_scalebar(position = c("LEFT", "BOTTOM"), text.size = 0.5) + 
-  tmap::tm_compass(color.dark="gray60",position=c("top","left")) -> tm1_static
-
-tmap::tm_shape(slope) + 
-  tmap::tm_raster(
-    col.scale = tm_scale(values = "viridis"), 
-    col.legend=tm_legend(title="Slope (%)",reverse = T)) + 
-  tmap::tm_graticules(lines = T, labels.rot = c(0, 90), lwd = 0.2) +
-  tmap::tm_scalebar(position = c("LEFT", "BOTTOM"), text.size = 0.5) + 
-  tmap::tm_compass(color.dark="gray60",position=c("top","left")) -> tm2_static
-
-tmap::tm_shape(asp_cos) + 
-  tmap::tm_raster(
-    col.scale = tm_scale(values = "PiYG"), 
-    col.legend=tm_legend(title="Northness",reverse = F)) + 
-  tmap::tm_graticules(lines = T, labels.rot = c(0, 90), lwd = 0.2) +
-  tmap::tm_scalebar(position = c("LEFT", "BOTTOM"), text.size = 0.5) + 
-  tmap::tm_compass(color.dark="gray60",position=c("top","left")) -> tm3_static
-
-tmap::tm_shape(asp_sin) + 
-  tmap::tm_raster(
-    col.scale = tm_scale(values = "PiYG"), 
-    col.legend=tm_legend(title="Eastness",reverse = F)) + 
-  tmap::tm_graticules(lines = T, labels.rot = c(0, 90), lwd = 0.2) +
-  tmap::tm_scalebar(position = c("LEFT", "BOTTOM"), text.size = 0.5) + 
-  tmap::tm_compass(color.dark="gray60",position=c("top","left")) -> tm4_static
-
-tmap::tmap_arrange(tm1_static, tm2_static, tm3_static, tm4_static, nrow=2)
+terra::writeRaster(elev,      "../data/elev_1m.tif",      overwrite = TRUE)
+terra::writeRaster(slope_pct, "../data/slope_1m.tif",     overwrite = TRUE)
+terra::writeRaster(asp_cos,   "../data/northness_1m.tif", overwrite = TRUE)
+terra::writeRaster(asp_sin,   "../data/eastness_1m.tif",  overwrite = TRUE)
 ```
 
-```{r}
-#| echo: false
-elev    = terra::rast("./data/elev_1m.tif")
-slope   = terra::rast("./data/slope_1m.tif")
-asp_cos = terra::rast("./data/northness_1m.tif")
-asp_sin = terra::rast("./data/eastness_1m.tif")
-
-slope_matrix = matrix(c(
-  0, 5, 1,    # <5%
-  5, 10, 2,   # 5-10%
-  10, 15, 3,  # 10-15%
-  15, 20, 4,  # 15-20%
-  20, 30, 5,  # 20-30%
-  30, 100, 6  # 30-100% (since you clamped at 100)
-), ncol=3, byrow=TRUE)
-slope = terra::classify(
-	slope, slope_matrix, include.lowest=TRUE)
-
-# Visualize
-levels(slope) <- data.frame(ID = 1:6,
-  slope_class = c("<5%", "5-10%", "10-15%", "15-20%", "20-30%", "30-100%"))
-
-tmap::tmap_mode("plot")
-tmap::tm_shape(elev) + 
-  tmap::tm_raster(
-    col.scale = tm_scale_continuous(values = terrain.colors(7)),
-    col.legend = tm_legend(title = "Elevation (m)", reverse = T)) + 
-  tmap::tm_graticules(lines = T, labels.rot = c(0, 90), lwd = 0.2) +
-  tmap::tm_scalebar(position = c("LEFT", "BOTTOM"), text.size = 0.5) + 
-  tmap::tm_compass(color.dark="gray60",position=c("top","left")) -> tm1_static
-
-tmap::tm_shape(slope) + 
-  tmap::tm_raster(
-    col.scale = tm_scale(values = "viridis"), 
-    col.legend=tm_legend(title="Slope (%)",reverse = T)) + 
-  tmap::tm_graticules(lines = T, labels.rot = c(0, 90), lwd = 0.2) +
-  tmap::tm_scalebar(position = c("LEFT", "BOTTOM"), text.size = 0.5) + 
-  tmap::tm_compass(color.dark="gray60",position=c("top","left")) -> tm2_static
-
-tmap::tm_shape(asp_cos) + 
-  tmap::tm_raster(
-    col.scale = tm_scale(values = "PiYG"), 
-    col.legend=tm_legend(title="Northness",reverse = F)) + 
-  tmap::tm_graticules(lines = T, labels.rot = c(0, 90), lwd = 0.2) +
-  tmap::tm_scalebar(position = c("LEFT", "BOTTOM"), text.size = 0.5) + 
-  tmap::tm_compass(color.dark="gray60",position=c("top","left")) -> tm3_static
-
-tmap::tm_shape(asp_sin) + 
-  tmap::tm_raster(
-    col.scale = tm_scale(values = "PiYG"), 
-    col.legend=tm_legend(title="Eastness",reverse = F)) + 
-  tmap::tm_graticules(lines = T, labels.rot = c(0, 90), lwd = 0.2) +
-  tmap::tm_scalebar(position = c("LEFT", "BOTTOM"), text.size = 0.5) + 
-  tmap::tm_compass(color.dark="gray60",position=c("top","left")) -> tm4_static
-
-tmap::tmap_arrange(tm1_static, tm2_static, tm3_static, tm4_static, nrow=2)
-```
+![](../assets/PNG/biomass_covariate_stack.png){fig-align="center" width="95%"}
 
 ### Canopy Covariate
 
--   100x aggregation (1m → 100m) matches field plot scale
--   Mean aggregation appropriate for height metrics
--   Alternative: 95th percentile for dominant height
+Create a 0.5 m CHM from the normalized tile and apply a 1.3 m vegetation threshold so open ground does not pollute the canopy layer.
 
 ```{r}
 #| eval: false
-las_ha = lidR::readALSLAS("./data/las_ha.laz")
-chm    = lidR::rasterize_canopy(las_ha, res=0.5, lidR::pitfree(subcircle=0.2))
+las_ha <- lidR::readALSLAS("../data/las_1ha.laz")
+chm    <- lidR::rasterize_canopy(las_ha, res = 0.5, lidR::pitfree(subcircle = 0.2))
 
-# Hillshade visualization
-slope 		= raster::terrain(chm, "slope", unit="radians") |> raster::raster()
-aspect		= raster::terrain(chm, "aspect", unit="radians") |> raster::raster()
-hillshade = raster::hillShade(slope, aspect, angle=40, direction=270)
-lidR::plot_dtm3d(hillshade, bg = "white") 
-lidR::plot_dtm3d(chm, bg = "white") 
-
-# Apply vegetation height threshold
 chm[chm < 1.3] <- NA
-terra::writeRaster(chm, "./data/chm_1m.tif")
+terra::writeRaster(chm, "../data/chm_1m.tif", overwrite = TRUE)
 ```
-
-![chm_hillshade_a](PNG/biomass_model_3.png){alt="Check Check 1" style="float: left; margin-right: 2%;" width="49.5%"} ![chm hillshade b](PNG/biomass_model_4.png){alt="Chunk Check 2" style="float: left;" width="46%"}
 
 ------------------------------------------------------------------------
 
-## 4.2 Species Covariates
+## 4.2 Species Covariate
 
-### VRI-Based Species Raster
+### Synthetic Species Raster
+
+For the Medina demonstration there is no local vegetation-inventory layer, so we derive a two-class species raster from terrain: higher-slope pixels are recoded to "mixed wood" and lower-slope pixels to "open / shrub", then smoothed with a 7 × 7 modal filter to suppress salt-and-pepper artifacts. In the original BC workflow this slot was filled by the Vegetation Resource Inventory (VRI) `SPECIES_CD_1` attribute.
 
 ```{r}
 #| eval: false
+slope_pct <- terra::rast("../data/slope_1m.tif")
 
-# Import VRI data
-#download.file(url = "https://pub.data.gov.bc.ca/datasets/02dba161-fdb7-48ae-a4bb-bd6ef017c36d/current/VEG_COMP_LYR_L1_POLY_2024.gdb.zip", destfile = "./data/vri_layers.zip", overwrite=TRUE)
-#zip_file_vri = ("./data/vri_layers.zip")
-#unzip(zip_file_vri, exdir="./data", overwrite = TRUE)
-vri = sf::read_sf("./data/vri_1ha.gpkg") |> 
-	dplyr::select(SPECIES_CD_1)
+spp_base <- terra::app(slope_pct, function(v) ifelse(v > 8, 2, 0))
+spp_base <- terra::focal(spp_base, w = matrix(1, 7, 7), fun = "modal",
+                         na.rm = TRUE)
+names(spp_base) <- "species"
 
-# Recode to numeric classes
-vri$species <- dplyr::recode(vri$SPECIES_CD_1,
-  PL = 0, PLI = 0,          				# Pine
-  SB = 1, SE = 1, SW = 1, SX = 1, 	# Spruce
-  FD = 2, FDI = 2,          				# Douglas-fir
-  CW = 3,                   				# Western redcedar
-  HW = 4,                   				# Western hemlock
-  BL = 5,				                    # Subalpine fir
-  LW = 6)       				          	# Western larch
-
-# Convert to raster
-vri_species	 = vri["species"]
-species = terra::rasterize(
-	terra::vect(vri_species), chm, 
-  field = "species", 
-  touches = TRUE
-	)
-
-species <- terra::resample(species, chm, method = "near")
-terra::writeRaster(species, "./data/species.tif")
+terra::writeRaster(spp_base, "../data/species.tif", overwrite = TRUE)
 ```
 
 **Species coding rationale:**
 
 -   Numeric classes enable regression models
--   Grouped by similar allometry (e.g., all spruce species)
--   Nearest-neighbor resampling method preserves categorical data
+-   Two classes are the minimum useful categorical split at 1 ha AOI scale
+-   Modal filtering preserves class boundaries while smoothing noise
 
 ------------------------------------------------------------------------
 
@@ -335,195 +184,122 @@ terra::writeRaster(species, "./data/species.tif")
 
 ```{r}
 #| eval: false
-elev    = terra::rast("./data/elev_1m.tif")
-slope   = terra::rast("./data/slope_1m.tif")
-asp_cos = terra::rast("./data/northness_1m.tif")
-asp_sin = terra::rast("./data/eastness_1m.tif")
-chm			= terra::rast("./data/chm_1m.tif")
-species = terra::rast("./data/species.tif")
+elev    <- terra::rast("../data/elev_1m.tif")
+slope   <- terra::rast("../data/slope_1m.tif")
+asp_cos <- terra::rast("../data/northness_1m.tif")
+asp_sin <- terra::rast("../data/eastness_1m.tif")
+chm     <- terra::rast("../data/chm_1m.tif")
+species <- terra::rast("../data/species.tif")
 
-# Rename layers for model compatibility
-names(elev) 		= "elev"
-names(slope)  	= "slope"
-names(asp_cos)  = "asp_cos"
-names(asp_sin)  = "asp_sin"
-names(chm)			= "chm"
-names(species)	= "species"
+names(elev)    <- "elev"
+names(slope)   <- "slope"
+names(asp_cos) <- "asp_cos"
+names(asp_sin) <- "asp_sin"
+names(chm)     <- "chm"
+names(species) <- "species"
 
-elev		= terra::resample(elev, chm, method = "bilinear")
-slope		= terra::resample(slope, chm, method = "bilinear")
-asp_cos	= terra::resample(asp_cos, chm, method = "bilinear")
-asp_sin	= terra::resample(asp_sin, chm, method = "bilinear")
-species	= terra::resample(species, chm, method = "near")
-chm			= terra::resample(chm, elev, method = "bilinear")
+chm_r     <- terra::resample(chm,     elev, method = "bilinear")
+species_r <- terra::resample(species, elev, method = "near")
 
-elev		= raster(elev)
-slope 	= raster(slope)
-asp_cos = raster(asp_cos)
-asp_sin = raster(asp_sin)
-chm			= raster(chm)
-species = raster(species)
-
-# Stack covariates
-covs_stack <- raster::stack(
-  elev, 
-  slope, 
-  asp_cos, 
-  asp_sin, 
-  chm, 
-  species
-  )
-
-# Verify stack
-names(covs_stack)
-rasterVis::levelplot(covs_stack)
+covs <- c(elev, slope, asp_cos, asp_sin, chm_r, species_r)
+names(covs) <- c("elev", "slope", "asp_cos", "asp_sin", "chm", "species")
+terra::plot(covs)
 ```
 
 ------------------------------------------------------------------------
 
-## 4.5 Field Data Preparation
+## 4.4 Simulated Plot Data
 
-### Import and Clean PSP Data
+### Generate Synthetic Plots
+
+Draw 120 plot centroids uniformly across the AOI and sample the covariate stack at each point. The WSVHA response is built from a CHM-dominated linear expression with additive Gaussian noise, so the downstream modelling is demonstrable without proprietary field data.
 
 ```{r}
 #| eval: false
+set.seed(20220708)
+bb <- terra::ext(covs)
+pts <- data.frame(
+  x = runif(120, bb[1] + 5, bb[2] - 5),
+  y = runif(120, bb[3] + 5, bb[4] - 5)
+)
+plot_cov <- cbind(pts, terra::extract(covs, as.matrix(pts)))
 
-# Import permanent sample plot data
-faib_psp <- read.csv("FAIB_PSP_20211028.csv")
-
-# Filter to utilization standard and target species
-faib_psp <- subset(faib_psp, util == '12.5')
-faib_psp <- subset(faib_psp, 
-  spc_live1 %in% c('PL', 'PLI', 'FD', 'FDI', 
-                   'SB', 'SE', 'SW', 'SX', 
-                   'CW', 'HW', 'BL', 'LW'))
-
-# Create species class variable
-faib_psp$species_class <- recode(faib_psp$spc_live1,
-  PL = 0, PLI = 0, 
-  SB = 1, SE = 1, SX = 1, 
-  FD = 2, FDI = 2, 
-  CW = 3, HW = 4, BL = 5, LW = 6)
-
-# Transform aspect
-faib_psp$asp_cos <- cos((faib_psp$aspect * pi) / 180)
-faib_psp$asp_sin <- sin((faib_psp$aspect * pi) / 180)
+plot_cov$wsvha_L <- with(plot_cov,
+  pmax(0,
+       18 * chm + 0.8 * slope + 30 * (species == 2) - 5 +
+         rnorm(nrow(plot_cov), 0, 25))
+)
+plot_cov <- na.omit(plot_cov)
 ```
 
-### Data Quality Control
+### Distribution Matching (optional)
+
+In the original BC workflow the FAIB plot distribution was bootstrap-reweighted to match the raster-derived `lead_htop` distribution. With a simulated plot set that is already drawn uniformly over the raster, this step is optional and shown for reference:
 
 ```{r}
 #| eval: false
+dens_fun <- approxfun(density(plot_cov$chm, adjust = 0.8))
+boot_w   <- dens_fun(plot_cov$chm)
 
-# Remove problematic observations
-faib_psp$elev[faib_psp$elev <= 0] <- NA
-faib_psp$slope[faib_psp$slope <= 0] <- NA
-faib_psp$lead_htop[faib_psp$lead_htop < 1.3] <- NA
-faib_psp$wsvha_L[faib_psp$wsvha_L <= 0] <- NA
+plot_cov_boot <- dplyr::slice_sample(plot_cov, n = 1000,
+                                     weight_by = boot_w, replace = TRUE)
 
-# Remove outliers (stems/ha > 864 = 3 SD above mean)
-faib_psp <- subset(faib_psp, stemsha_L < 864)
-
-# Subset to model variables
-faib_vri_df <- faib_psp[c("elev", "slope", "asp_cos", "asp_sin",
-                          "lead_htop", "species_class", "wsvha_L")]
-faib_vri_df <- na.omit(faib_vri_df)
-```
-
-------------------------------------------------------------------------
-
-## 4.6 Bootstrapping for Distribution Matching
-
-Match field data distribution to raster covariate distribution to reduce prediction bias.
-
-```{r}
-#| eval: false
-
-# Extract raster distribution
-lead_htop_df <- as.data.frame(rasterToPoints(lead_htop_raster))
-
-# Create density function for weighting
-dens_fun <- approxfun(density(lead_htop_df$lead_htop, adjust = 0.8))
-
-# Bootstrap sample
-B <- 1000  # Number of bootstrap samples
-n <- 4     # Sample multiplier
-
-faib_vri_boot <- sample_n(faib_vri_df, 
-                          B * n, 
-                          weight_by = dens_fun(faib_vri_df$lead_htop), 
-                          replace = TRUE)
-
-# Compare distributions
 par(mfrow = c(1, 2))
-truehist(faib_vri_df$lead_htop, main = "Original FAIB")
-truehist(faib_vri_boot$lead_htop, main = "Bootstrapped FAIB")
+MASS::truehist(plot_cov$chm,      main = "Simulated plot CHM")
+MASS::truehist(plot_cov_boot$chm, main = "Reweighted plot CHM")
 ```
+
+![](../assets/PNG/biomass_plot_distribution.png){fig-align="center" width="85%"}
 
 **Bootstrapping rationale:** Reduces systematic bias when field plots under-represent certain height classes present in raster data.
 
 ------------------------------------------------------------------------
 
-## 4.7 Train-Test Split
+## 4.5 Train-Test Split
 
 ```{r}
 #| eval: false
+idx <- caret::createDataPartition(plot_cov$wsvha_L, p = 0.80, list = FALSE)
 
-# 80-20 split
-train_split <- createDataPartition(faib_vri_boot$wsvha_L, p = 0.80, list = FALSE)
+train <- plot_cov[idx,  ]
+test  <- plot_cov[-idx, ]
 
-train <- faib_vri_boot[train_split, ]
-test <- faib_vri_boot[-train_split, ]
-
-# Separate predictors and response
-X_train <- train[, -7]
-y_train <- train[, 7]
-X_test <- test[, -7]
-y_test <- test[, 7]
+X_train <- train[, c("elev", "slope", "asp_cos", "asp_sin", "chm", "species")]
+y_train <- train$wsvha_L
+X_test  <- test[,  c("elev", "slope", "asp_cos", "asp_sin", "chm", "species")]
+y_test  <- test$wsvha_L
 ```
 
 ------------------------------------------------------------------------
 
-## 4.8 Model Training
+## 4.6 Model Training
 
 ### Random Forest Regression
 
 ```{r}
 #| eval: false
-
-library(e1071)
 library(randomForest)
 library(caret)
 
-# Hyperparameter tuning
-tuneResult_rf <- tune.randomForest(
-  X_train, y_train,
-  mtry = c(2:6),
-  ntree = 50,
-  tunecontrol = tune.control(sampling = "cross", cross = 10),
-  preProcess = c('YeoJohnson', 'scale', 'center', 'corr')
+rf <- randomForest::randomForest(
+  wsvha_L ~ elev + slope + asp_cos + asp_sin + chm + species,
+  data = train, ntree = 300, mtry = 3
 )
 
-# Extract best model
-tunedModel_rf <- tuneResult_rf$best.model
+rf_predictions <- predict(rf, X_test)
 
-# Predict on test set
-rf_predictions <- predict(tunedModel_rf, X_test)
+rf_mae  <- caret::MAE (rf_predictions, y_test)
+rf_rmse <- caret::RMSE(rf_predictions, y_test)
+rf_r2   <- caret::R2  (rf_predictions, y_test)
 
-# Performance metrics
-rf_mae <- MAE(rf_predictions, y_test)
-rf_rmse <- RMSE(rf_predictions, y_test)
-rf_r2 <- R2(rf_predictions, y_test)
+cat("MAE:",  round(rf_mae,  2), "m^3/ha\n")
+cat("RMSE:", round(rf_rmse, 2), "m^3/ha\n")
+cat("R^2:",  round(rf_r2,   3), "\n")
 
-cat("MAE:", round(rf_mae, 2), "m³/ha\n")
-cat("RMSE:", round(rf_rmse, 2), "m³/ha\n")
-cat("R²:", round(rf_r2, 3), "\n")
-
-# Save model
-save(tunedModel_rf, file = "wsvha_model_rf_bootstrapped.RData")
+save(rf, file = "../data/wsvha_model_rf_medina.RData")
 ```
 
-**Preprocessing transformations:**
+**Preprocessing transformations** (available via `caret::train`):
 
 -   `YeoJohnson`: Power transformation for skewed predictors
 -   `center`: Mean-centering (subtract mean)
@@ -534,88 +310,73 @@ save(tunedModel_rf, file = "wsvha_model_rf_bootstrapped.RData")
 
 ```{r}
 #| eval: false
+library(e1071)
 
-# SVM with radial kernel
-tuneResult_svm <- tune(svm, X_train, y_train,
+tuneResult_svm <- e1071::tune(
+  svm, X_train, y_train,
   ranges = list(
-    cost = c(1, 5, 7, 15, 20),
+    cost  = c(1, 5, 7, 15, 20),
     gamma = 2^(-1:1)
   ),
-  tunecontrol = tune.control(cross = 10),
-  preProcess = c("YeoJohnson", "center", "scale")
+  tunecontrol = e1071::tune.control(cross = 10)
 )
 
-tunedModel_svm <- tuneResult_svm$best.model
-
-# Predict and evaluate
+tunedModel_svm  <- tuneResult_svm$best.model
 svm_predictions <- predict(tunedModel_svm, X_test)
-svm_mae <- MAE(svm_predictions, y_test)
-svm_rmse <- RMSE(svm_predictions, y_test)
-svm_r2 <- R2(svm_predictions, y_test)
+svm_rmse        <- caret::RMSE(svm_predictions, y_test)
 ```
 
 ------------------------------------------------------------------------
 
-## 4.9 Spatial Prediction
+## 4.7 Spatial Prediction
 
 ### Generate WSVHA Raster
 
 ```{r}
 #| eval: false
+wsvha_raster <- terra::predict(covs, rf, na.rm = TRUE)
 
-# Predict across entire raster stack
-wsvha_raster <- raster::predict(covs_stack, tunedModel_rf)
+# Clamp negatives
+wsvha_raster <- terra::clamp(wsvha_raster, lower = 0)
 
-# Remove negative predictions (artifacts from extrapolation)
-wsvha_raster$layer[wsvha_raster$layer <= 0] <- 0
+terra::writeRaster(wsvha_raster,
+                   filename = "../data/wsvha_pred.tif",
+                   overwrite = TRUE)
 
-# Export
-writeRaster(wsvha_raster,
-            filename = "wsvha_model1_randomForest_bootstrapped_demBased_100m_allSpeciesAreas.tif",
-            overwrite = TRUE)
+terra::plot(wsvha_raster,
+            main = "Predicted WSVHA, Medina AOI",
+            col  = rev(terrain.colors(50)))
 
-# Visualize
-plot(wsvha_raster, 
-     main = "WSVHA for All-Species Operating Areas: Random Forest",
-     cex.main = 0.8,
-     maxpixels = 22000000)
-
-hist(wsvha_raster,
-     main = "WSVHA Distribution: Random Forest",
-     cex.main = 0.8,
-     maxpixels = 22000000)
+hist(values(wsvha_raster), breaks = 40,
+     main = "WSVHA Distribution", xlab = "m^3 / ha")
 ```
 
-Negative predictions are clamped to zero. These arise when the model extrapolates beyond training data, typically in recently harvested or non-forested cells. The WSVHA raster was validated against pre-harvest cruise data at the Quesnel Lake site (see @sec-validation).
+![](../assets/PNG/biomass_prediction_map.png){fig-align="center" width="85%"}
+
+Negative predictions are clamped to zero. These arise when the model extrapolates beyond training data.
 
 ------------------------------------------------------------------------
 
-## 4.10 Model Evaluation
+## 4.8 Model Evaluation
 
-### Cross-Validation Metrics
-
-Performance metrics from 10-fold cross-validation on 5,264 FAIB permanent sample plots across the Gaspard Operating Area, BC. Two model specifications were tested: Model 1 excludes stems per hectare (`stemsha_L`); Model 2 includes it.
+### Holdout Performance
 
 ```{r}
 #| eval: false
+rf_r2_full   <- caret::R2 (predict(rf, X_train), y_train)
+rf_rmse_full <- caret::RMSE(predict(rf, X_train), y_train)
+rf_rmse_test <- caret::RMSE(rf_predictions, y_test)
 
-# Full dataset performance
-rf_r2_full   <- R2(predict(tunedModel_rf, X_train), y_train)
-rf_mae_full  <- MAE(predict(tunedModel_rf, X_train), y_train)
-rf_rmse_full <- RMSE(predict(tunedModel_rf, X_train), y_train)
-
-# Test set performance
-rf_mae_test  <- MAE(rf_predictions, y_test)
-rf_rmse_test <- RMSE(rf_predictions, y_test)
-
-cat("Full Dataset R²:", round(rf_r2_full, 3), "\n")
-cat("Full Dataset RMSE:", round(rf_rmse_full, 2), "m³/ha\n")
-cat("Test Set RMSE:", round(rf_rmse_test, 2), "m³/ha\n")
+cat("Full-data R^2:",   round(rf_r2_full,   3), "\n")
+cat("Full-data RMSE:",  round(rf_rmse_full, 2), "m^3/ha\n")
+cat("Test-set RMSE:",   round(rf_rmse_test, 2), "m^3/ha\n")
 ```
 
-### Operational Results
+![](../assets/PNG/biomass_cv_scatter.png){fig-align="center" width="75%"}
 
-The table below reports actual performance from the [EFI model assessment pipeline](https://github.com/seamusrobertmurphy/enhanced-forest-inventory-model-assessment), run on FAIB PSP data with 80/20 train-test split and 10-fold CV. Target variable: whole stem volume per hectare (WSVHA, m³/ha).
+### Operational Results (BC reference)
+
+For operational context, the table below reports the author's original performance figures from the [EFI model assessment pipeline](https://github.com/seamusrobertmurphy/enhanced-forest-inventory-model-assessment) on 5,264 BC FAIB permanent sample plots, 80/20 train-test + 10-fold CV. These numbers are reproduced here as a reference; the Medina simulation above uses a much smaller synthetic sample and should not be compared directly.
 
 | Model | Full RMSE | CV RMSE | Full MAE | RMSE Ratio |
 |:------|----------:|--------:|---------:|-----------:|
@@ -627,13 +388,13 @@ The table below reports actual performance from the [EFI model assessment pipeli
 | SVM Linear                          | 41.2 | 213  | 30.0 | 0.19 |
 | GLM (caret)                         | 40.9 | 216  | 30.7 | 0.19 |
 
-: Model comparison for WSVHA prediction (m³/ha). RMSE ratio = full-data RMSE / CV RMSE; values well below 1.0 indicate overfitting. {#tbl-model-comparison}
+: Model comparison for WSVHA prediction (m³/ha), BC FAIB reference run. {#tbl-model-comparison}
 
 The RF (caret, 500 trees) achieves the lowest full-data RMSE but an RMSE ratio of 0.02, a clear sign of overfitting. The SVM Radial with tuned epsilon strikes the best balance: full RMSE of 5.9 m³/ha and CV RMSE of 9.9 m³/ha. Linear models (SVM Linear, GLM) failed entirely, with CV RMSE exceeding 200 m³/ha.
 
-### Univariate Predictor Analysis
+### Univariate Predictor Analysis (BC reference)
 
-Simple linear regressions of each covariate against WSVHA reveal that `lead_htop` (95th percentile canopy height from LiDAR) dominates:
+Simple linear regressions of each covariate against WSVHA on the BC reference dataset:
 
 | Predictor | R² | Coefficient | p-value |
 |:----------|---:|----------:|--------:|
@@ -645,46 +406,25 @@ Simple linear regressions of each covariate against WSVHA reveal that `lead_htop
 | asp_sin        | < 0.001|  1.535 | 0.59     |
 | stemsha_L      | < 0.001| -0.001 | 0.47     |
 
-: Univariate linear regression of each predictor against WSVHA. {#tbl-univariate}
+: Univariate linear regression of each predictor against WSVHA (BC FAIB). {#tbl-univariate}
 
 LiDAR-derived canopy height alone explains 65% of variance in whole stem volume. All terrain and species variables contribute less than 2% individually, though they improve ensemble predictions through interaction effects.
 
 ------------------------------------------------------------------------
 
-## 4.11 Validation Sites {#sec-validation}
+## 4.9 Validation Sites (BC reference) {#sec-validation}
 
-### Quesnel Lake Developed Blocks
-
-Independent validation using recently harvested blocks where pre-harvest inventory exists.
+Independent validation in the BC workflow used recently harvested blocks at Quesnel Lake where pre-harvest cruise data existed. That validation is retained here as a pointer to the original pipeline:
 
 ```{r}
 #| eval: false
-
-# Load validation area covariate stack (same layers, different extent)
-covs_quesnel <- raster::stack("./data/covs_quesnel.tif")
-
-# Apply model to validation area
-wsvha_quesnel <- raster::predict(covs_quesnel, tunedModel_rf)
-wsvha_quesnel$layer[wsvha_quesnel$layer <= 0] <- 0
-
-# Export
-writeRaster(wsvha_quesnel,
-            "wsvha_model1_randomForest_bootstrapped_demBased_100m_quesnelANDdevBlocks.tif",
-            overwrite = TRUE)
-
-# Visualize
-plot(wsvha_quesnel,
-     main = "Quesnel WSVHA: Random Forest",
-     cex.main = 0.8,
-     maxpixels = 22000000)
-
-hist(wsvha_quesnel,
-     main = "Quesnel WSVHA: Random Forest",
-     cex.main = 0.8,
-     maxpixels = 22000000)
+# covs_quesnel <- raster::stack("../data/covs_quesnel.tif")
+# wsvha_quesnel <- raster::predict(covs_quesnel, tunedModel_rf)
+# wsvha_quesnel[wsvha_quesnel <= 0] <- 0
+# raster::writeRaster(wsvha_quesnel, "../data/wsvha_quesnel.tif", overwrite = TRUE)
 ```
 
-The validation compares predicted WSVHA against pre-harvest cruise data at the block level, testing for systematic bias and assessing prediction variance within homogeneous stands. Full pipeline code and results are available in the [EFI full pipeline repo](https://github.com/seamusrobertmurphy/enhanced-forest-inventory-full-pipeline).
+Full pipeline code and results are available in the [EFI full pipeline repo](https://github.com/seamusrobertmurphy/enhanced-forest-inventory-full-pipeline).
 
 ------------------------------------------------------------------------
 
