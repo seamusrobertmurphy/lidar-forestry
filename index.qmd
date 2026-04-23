@@ -74,7 +74,7 @@ div.column {
   display: block;
   height:200px;
   width: 200px;
-  background-image: url('https://raw.githubusercontent.com/seamusrobertmurphy/lidar-forestry/refs/heads/main/assets/PNG/graphical-abstract.png');
+  background-image: url('https://raw.githubusercontent.com/seamusrobertmurphy/lidar-forestry/refs/heads/main/assets/PNG/unnamed-chunk-5-1.png');
   background-size: contain;
   background-position: 50% 50%;
   padding-top: 1px !important;
@@ -110,7 +110,7 @@ Accurate canopy height models (CHMs) are essential for forest inventory metrics.
 
 With validated CHMs and stem maps, aboveground biomass can be estimated. This chapter focuses on model selection, allometric equation application, bias correction, and uncertainty quantification. The goal is achieving root mean square error (RMSE) below operational thresholds while understanding model limitations across forest conditions. Model diagnostics identify when predictions fail and why.
 
-![](https://raw.githubusercontent.com/seamusrobertmurphy/lidar-forestry/refs/heads/main/assets/PNG/graphical-abstract.png){fig-align="center" width="95%"}
+![](https://raw.githubusercontent.com/seamusrobertmurphy/lidar-forestry/refs/heads/main/assets/PNG/unnamed-chunk-5-1.png){fig-align="center" width="95%"}
 
 ------------------------------------------------------------------------
 
