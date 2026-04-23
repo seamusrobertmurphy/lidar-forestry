@@ -22,6 +22,7 @@ format:
 pacman::p_load(
   "curl", 
   "dplyr",
+  "devtools",
   "fontawesome",
   "htmltools",
   "kableExtra", "knitr",
