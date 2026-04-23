@@ -25,10 +25,10 @@ book:
 
   chapters:
     - index.qmd
-    - point-cloud/index.qmd
-    - stem-detect/index.qmd
-    - canopy-height/index.qmd
-    - biomass-model/index.qmd
+    - 01-point-cloud/index.qmd
+    - 02-stem-detect/index.qmd
+    - 03-canopy-height/index.qmd
+    - 04-biomass-model/index.qmd
 
   appendices:
     - resources/index.qmd

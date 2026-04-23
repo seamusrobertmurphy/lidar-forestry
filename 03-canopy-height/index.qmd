@@ -124,7 +124,7 @@ terra::plot(chm, col = height.colors(50))
 
 ### Points Extraction
 
-Extract dominant height directly from point clouds without rasterizing. This method is slower but preserves full point information. The `ttops` object is derived in [Chapter 2: Stem Detection](https://seamusrobertmurphy.quarto.pub/lidar-forestry/stem-detect/).
+Extract dominant height directly from point clouds without rasterizing. This method is slower but preserves full point information. The `ttops` object is derived in [Chapter 2: Stem Detection](https://seamusrobertmurphy.quarto.pub/lidar-forestry/02-stem-detect/).
 
 ```{r}
 #| eval: true
